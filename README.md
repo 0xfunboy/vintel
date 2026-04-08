@@ -19,6 +19,7 @@ Production-oriented Next.js app for a Vinted sniper portal on `https://app.eeess
 Copy `.env.example` to `.env.local` and set:
 
 - `APP_URL`
+- `PORT`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `INGEST_CRON_SECRET`
@@ -33,13 +34,13 @@ source ~/.nvm/nvm.sh
 nvm use 23.3.0
 pnpm install
 pnpm build
-pnpm start -- --port 3001
+pnpm start -- --port 43101
 ```
 
 Dev:
 
 ```bash
-pnpm dev -- --port 3001
+pnpm dev -- --port 43101
 ```
 
 Smoke:
@@ -47,6 +48,24 @@ Smoke:
 ```bash
 pnpm smoke
 pnpm poll
+```
+
+## Production port
+
+`app.eeess.cyou` is pinned to `PORT=43101`.
+
+The current production unit also keeps a local compatibility bridge on `127.0.0.1:3001` so the existing Cloudflare tunnel can keep serving traffic until its system service is reloaded.
+
+## Safe deploy flow
+
+On this host, do not rebuild while `next start` is serving the same `.next` directory. Stop the service first, rebuild, then start it again.
+
+```bash
+systemctl --user stop vinted-gpu-watch.service
+source ~/.nvm/nvm.sh
+nvm use 23.3.0
+pnpm build
+systemctl --user start vinted-gpu-watch.service
 ```
 
 ## Main routes
