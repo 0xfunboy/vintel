@@ -6,6 +6,7 @@ import { ingestListings } from "@/lib/ingest";
 const listingSchema = z.object({
   source: z.string().min(1),
   sourceListingId: z.string().min(1),
+  searchUrl: z.string().url().nullable().optional(),
   category: z.string().nullable().optional(),
   title: z.string().min(1),
   description: z.string().nullable().optional(),

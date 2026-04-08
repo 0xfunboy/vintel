@@ -11,3 +11,4 @@ data/*.json
 playwright-live.png
 vintel-home.png
 node_modules
+tsconfig.tsbuildinfo

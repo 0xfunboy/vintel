@@ -5,12 +5,12 @@ Production-oriented Next.js app for a Vinted sniper portal on `https://app.eeess
 ## Included
 
 - optional Google OAuth with Auth.js
-- guest-first homepage with live market previews
+- guest-first homepage with live Vinted market search
 - private per-user dashboard for filters and delivery
 - dark mode first, light mode available
 - English / Italian UI switch
-- Telegram chat linking through `/start <token>`
-- protected ingest API for real listing delivery
+- Telegram chat linking through `/start <token>` plus menu, status, and help commands
+- protected ingest API plus live Vinted poller for tracked searches
 - privacy, cookie, and GDPR pages
 - JSON persistence for single-host deployment
 
@@ -46,6 +46,7 @@ Smoke:
 
 ```bash
 pnpm smoke
+pnpm poll
 ```
 
 ## Main routes
@@ -57,6 +58,9 @@ pnpm smoke
 - `/cookies`
 - `/gdpr`
 - `/api/health`
+- `/api/search/live`
+- `/api/sniper/track`
+- `/api/cron/poll`
 - `/api/ingest/listings`
 - `/api/telegram/webhook`
 - `/api/me/export`

@@ -663,7 +663,10 @@ html[data-theme="light"] .primary-button {
 .market-head,
 .lane-head,
 .category-pill,
-.snapshot-actions {
+.snapshot-actions,
+.market-status-row,
+.market-status-copy,
+.market-utility-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -719,6 +722,30 @@ html[data-theme="light"] .primary-button {
 .market-toolbar {
   margin-bottom: 18px;
   grid-template-columns: 1.1fr 1fr 1fr;
+}
+
+.market-status-row {
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.market-status-copy,
+.market-utility-row {
+  flex-wrap: wrap;
+}
+
+.market-status-copy span:not(.badge) {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.market-utility-row {
+  justify-content: flex-end;
 }
 
 .search-shell {

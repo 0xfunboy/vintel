@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/filters";
 import { copy, getLocalePreference } from "@/lib/i18n";
 import { getTelegramBotProfile } from "@/lib/telegram";
 import type { ListingRecord, Locale } from "@/lib/types";
+import { buildVintedCatalogUrl, extractSniperKeywords, searchVintedCatalog } from "@/lib/vinted";
 
 function formatDate(value: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale === "it" ? "it-IT" : "en-GB", {
@@ -78,21 +79,28 @@ export default async function HomePage() {
   const session = await auth();
   const locale = await getLocalePreference();
   const t = copy[locale];
-  const [bot, listings, users] = await Promise.all([getTelegramBotProfile(), readListings(), readUsers()]);
+  const [bot, storedListings, users, liveSearch] = await Promise.all([
+    getTelegramBotProfile(),
+    readListings(),
+    readUsers(),
+    searchVintedCatalog({ locale, limit: 24 }).catch(() => null)
+  ]);
 
-  const sortedListings = [...listings].sort(
+  const sortedStoredListings = [...storedListings].sort(
     (left, right) => new Date(right.postedAt).getTime() - new Date(left.postedAt).getTime()
   );
+  const marketListings = liveSearch?.listings.length ? liveSearch.listings : sortedStoredListings;
+  const analyticsSeed = sortedStoredListings.length > 0 ? sortedStoredListings : marketListings;
 
-  const under10 = sortedListings.filter((listing) => listing.priceCents <= 1000).slice(0, 4);
-  const under100 = sortedListings.filter((listing) => listing.priceCents <= 10000).slice(0, 4);
-  const under1000 = sortedListings.filter((listing) => listing.priceCents <= 100000).slice(0, 4);
-  const latest = sortedListings.slice(0, 9);
-  const latestSniped = sortedListings.slice(0, 3);
+  const under10 = marketListings.filter((listing) => listing.priceCents <= 1000).slice(0, 4);
+  const under100 = marketListings.filter((listing) => listing.priceCents <= 10000).slice(0, 4);
+  const under1000 = marketListings.filter((listing) => listing.priceCents <= 100000).slice(0, 4);
+  const latest = marketListings.slice(0, 9);
+  const latestSniped = marketListings.slice(0, 3);
   const spotlight = latest[0] ?? null;
 
   const categoryCounts = new Map<string, number>();
-  for (const listing of sortedListings) {
+  for (const listing of analyticsSeed) {
     const category = toKey(listing.category ?? "");
     if (!category) {
       continue;
@@ -101,7 +109,14 @@ export default async function HomePage() {
     categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
   }
 
-  const categories = [...categoryCounts.keys()].map(titleCase).slice(0, 12);
+  if (categoryCounts.size === 0 && liveSearch) {
+    for (const category of liveSearch.categories) {
+      if (category.itemCount > 0) {
+        categoryCounts.set(toKey(category.title), category.itemCount);
+      }
+    }
+  }
+
   const hotCategories = [...categoryCounts.entries()]
     .sort((left, right) => right[1] - left[1])
     .slice(0, 8)
@@ -122,13 +137,25 @@ export default async function HomePage() {
     }
   }
 
-  for (const listing of sortedListings) {
+  for (const listing of analyticsSeed) {
     for (const keyword of listing.matchedKeywords) {
       const key = toKey(keyword);
       if (!key) {
         continue;
       }
       keywordCounts.set(key, (keywordCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  if (keywordCounts.size === 0) {
+    for (const listing of marketListings) {
+      for (const keyword of extractSniperKeywords([listing.title, listing.description])) {
+        const key = toKey(keyword);
+        if (!key) {
+          continue;
+        }
+        keywordCounts.set(key, (keywordCounts.get(key) ?? 0) + 1);
+      }
     }
   }
 
@@ -385,8 +412,16 @@ export default async function HomePage() {
 
       <PublicMarketBoard
         locale={locale}
-        listings={latest}
-        categories={categories}
+        initialState={{
+          query: liveSearch?.query ?? "",
+          searchUrl: liveSearch?.searchUrl ?? buildVintedCatalogUrl({}),
+          listings: marketListings,
+          categories: liveSearch?.categories ?? [],
+          totalEntries: liveSearch?.totalEntries ?? marketListings.length,
+          generatedAt: liveSearch?.generatedAt ?? new Date().toISOString()
+        }}
+        allowTracking={Boolean(session?.user?.email)}
+        trackHref={personalizeHref}
         labels={{
           title: t.productFeed,
           body: t.productFeedBody,
@@ -396,7 +431,15 @@ export default async function HomePage() {
           categoryMode: t.homeCategoryMode,
           priceMode: t.homePriceMode,
           open: t.openListing,
-          all: t.homeAll
+          all: t.homeAll,
+          liveReady: t.homeLiveReady,
+          liveSearching: t.homeLiveSearching,
+          liveResults: t.homeLiveResults,
+          liveFailed: t.homeLiveFailed,
+          trackSearch: t.homeTrackSearch,
+          trackSimilar: t.homeTrackSimilar,
+          trackSignIn: t.homeTrackSignIn,
+          trackSaved: t.homeTrackSaved
         }}
       />
 

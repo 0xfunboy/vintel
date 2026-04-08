@@ -1,14 +1,25 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useState } from "react";
 
 import { formatCurrency } from "@/lib/filters";
 import type { ListingRecord, Locale } from "@/lib/types";
+import type { VintedFacetCategory } from "@/lib/vinted";
+
+type MarketState = {
+  query: string;
+  searchUrl: string;
+  listings: ListingRecord[];
+  categories: VintedFacetCategory[];
+  totalEntries: number;
+  generatedAt: string;
+};
 
 type PublicMarketBoardProps = {
   locale: Locale;
-  listings: ListingRecord[];
-  categories: string[];
+  initialState: MarketState;
+  allowTracking: boolean;
+  trackHref: string;
   labels: {
     title: string;
     body: string;
@@ -19,6 +30,14 @@ type PublicMarketBoardProps = {
     priceMode: string;
     open: string;
     all: string;
+    liveReady: string;
+    liveSearching: string;
+    liveResults: string;
+    liveFailed: string;
+    trackSearch: string;
+    trackSimilar: string;
+    trackSignIn: string;
+    trackSaved: string;
   };
 };
 
@@ -51,22 +70,125 @@ function getFallbackLabel(listing: ListingRecord) {
   return (listing.category ?? listing.source ?? listing.title).slice(0, 1).toUpperCase();
 }
 
-export function PublicMarketBoard({ locale, listings, categories, labels }: PublicMarketBoardProps) {
-  const [query, setQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedLane, setSelectedLane] = useState<PriceLane>("all");
-  const deferredQuery = useDeferredValue(query);
+function getCategoryLabel(listing: ListingRecord, activeCategory: VintedFacetCategory | null) {
+  return listing.category ?? activeCategory?.title ?? null;
+}
 
-  const filtered = listings.filter((listing) => {
+export function PublicMarketBoard({ locale, initialState, allowTracking, trackHref, labels }: PublicMarketBoardProps) {
+  const [query, setQuery] = useState(initialState.query);
+  const [market, setMarket] = useState<MarketState>(initialState);
+  const [selectedCategoryPath, setSelectedCategoryPath] = useState<string>("all");
+  const [selectedLane, setSelectedLane] = useState<PriceLane>("all");
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [trackMessage, setTrackMessage] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(query);
+  const activeCategory = selectedCategoryPath === "all" ? null : market.categories.find((entry) => entry.path === selectedCategoryPath) ?? null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSearching(true);
+      setError(null);
+
+      try {
+        const params = new URLSearchParams();
+        if (deferredQuery.trim()) {
+          params.set("q", deferredQuery.trim());
+        }
+        if (selectedCategoryPath !== "all") {
+          params.set("categoryPath", selectedCategoryPath);
+        }
+
+        const response = await fetch(`/api/search/live?${params.toString()}`, {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal
+        });
+
+        const payload = (await response.json()) as {
+          ok: boolean;
+          error?: string;
+          result?: MarketState;
+        };
+
+        if (!response.ok || !payload.ok || !payload.result) {
+          throw new Error(payload.error ?? labels.liveFailed);
+        }
+
+        startTransition(() => {
+          setMarket(payload.result as MarketState);
+        });
+      } catch (fetchError) {
+        if (!controller.signal.aborted) {
+          setError(fetchError instanceof Error ? fetchError.message : labels.liveFailed);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearching(false);
+        }
+      }
+    }, 220);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [deferredQuery, labels.liveFailed, selectedCategoryPath]);
+
+  const filtered = market.listings.filter((listing) => {
     const haystack = `${listing.title} ${listing.description ?? ""} ${listing.category ?? ""}`.toLowerCase();
     const queryMatch = deferredQuery.trim() === "" ? true : haystack.includes(deferredQuery.toLowerCase().trim());
-    const categoryMatch = selectedCategory === "all" ? true : (listing.category ?? "").toLowerCase() === selectedCategory.toLowerCase();
     const laneMatch = matchesLane(listing.priceCents, selectedLane);
 
-    return queryMatch && categoryMatch && laneMatch;
+    return queryMatch && laneMatch;
   });
 
-  const preview = filtered.slice(0, 8);
+  const preview = filtered.slice(0, 12);
+  const searchContext = deferredQuery.trim() || market.query;
+
+  async function trackSimilar(listing?: ListingRecord) {
+    if (!allowTracking) {
+      window.location.href = trackHref;
+      return;
+    }
+
+    setTrackMessage(null);
+
+    try {
+      const response = await fetch("/api/sniper/track", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          query: searchContext || listing?.title || "",
+          searchUrl: market.searchUrl,
+          categoryTitle: activeCategory?.title ?? listing?.category ?? null,
+          listingTitle: listing?.title ?? null,
+          listingPriceCents: listing?.priceCents ?? null
+        })
+      });
+
+      if (response.status === 401) {
+        window.location.href = trackHref;
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? labels.liveFailed);
+      }
+
+      setTrackMessage(labels.trackSaved);
+    } catch (trackError) {
+      setTrackMessage(trackError instanceof Error ? trackError.message : labels.liveFailed);
+    }
+  }
 
   return (
     <section className="content-panel market-panel" id="market">
@@ -99,21 +221,24 @@ export function PublicMarketBoard({ locale, listings, categories, labels }: Publ
           <span className="chip-title">{labels.categoryMode}</span>
           <button
             type="button"
-            className={selectedCategory === "all" ? "filter-chip is-active" : "filter-chip"}
-            onClick={() => setSelectedCategory("all")}
+            className={selectedCategoryPath === "all" ? "filter-chip is-active" : "filter-chip"}
+            onClick={() => setSelectedCategoryPath("all")}
           >
             {labels.all}
           </button>
-          {categories.map((category) => (
-            <button
-              key={category}
-              type="button"
-              className={selectedCategory === category ? "filter-chip is-active" : "filter-chip"}
-              onClick={() => setSelectedCategory(category)}
-            >
-              {category}
-            </button>
-          ))}
+          {market.categories
+            .filter((category) => category.itemCount > 0)
+            .slice(0, 8)
+            .map((category) => (
+              <button
+                key={category.path}
+                type="button"
+                className={selectedCategoryPath === category.path ? "filter-chip is-active" : "filter-chip"}
+                onClick={() => setSelectedCategoryPath(category.path)}
+              >
+                {category.title}
+              </button>
+            ))}
         </div>
 
         <div className="chip-strip">
@@ -131,8 +256,24 @@ export function PublicMarketBoard({ locale, listings, categories, labels }: Publ
         </div>
       </div>
 
+      <div className="market-status-row">
+        <div className="market-status-copy">
+          <span className={searching ? "badge" : "badge success"}>{searching ? labels.liveSearching : labels.liveReady}</span>
+          <span>{labels.liveResults.replace("{count}", String(market.totalEntries))}</span>
+        </div>
+
+        <div className="market-utility-row">
+          {(searchContext || activeCategory) && (
+            <button className="ghost-button" type="button" onClick={() => trackSimilar()}>
+              {allowTracking ? labels.trackSearch : labels.trackSignIn}
+            </button>
+          )}
+          {trackMessage ? <span className="inline-note">{trackMessage}</span> : null}
+        </div>
+      </div>
+
       {preview.length === 0 ? (
-        <div className="empty-state">{labels.noListings}</div>
+        <div className="empty-state">{error ?? labels.noListings}</div>
       ) : (
         <div className="public-grid">
           {preview.map((listing) => (
@@ -157,8 +298,10 @@ export function PublicMarketBoard({ locale, listings, categories, labels }: Publ
                 <div className="public-card-top">
                   <div>
                     <div className="micro-row">
-                      {listing.category ? <span className="micro-badge">{listing.category}</span> : null}
-                      <span className="micro-badge subdued">{listing.source}</span>
+                      {getCategoryLabel(listing, activeCategory) ? (
+                        <span className="micro-badge">{getCategoryLabel(listing, activeCategory)}</span>
+                      ) : null}
+                      <span className="micro-badge subdued">{formatDate(listing.postedAt, locale)}</span>
                     </div>
                     <h3>{listing.title}</h3>
                   </div>
@@ -167,8 +310,7 @@ export function PublicMarketBoard({ locale, listings, categories, labels }: Publ
 
                 <div className="meta-grid">
                   <span>{listing.sellerName}</span>
-                  <span>{formatDate(listing.postedAt, locale)}</span>
-                  {listing.location ? <span>{listing.location}</span> : null}
+                  <span>{listing.source}</span>
                 </div>
 
                 {listing.matchedKeywords.length > 0 ? (
@@ -185,6 +327,9 @@ export function PublicMarketBoard({ locale, listings, categories, labels }: Publ
                   <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
                     {labels.open}
                   </a>
+                  <button className="ghost-button" type="button" onClick={() => trackSimilar(listing)}>
+                    {allowTracking ? labels.trackSimilar : labels.trackSignIn}
+                  </button>
                 </div>
               </div>
             </article>

@@ -42,6 +42,7 @@ export async function ingestListings(items: IngestListing[]): Promise<IngestSumm
       id: randomUUID(),
       source: item.source,
       sourceListingId: item.sourceListingId,
+      sourceSearchUrl: item.searchUrl ?? null,
       category: item.category ?? null,
       title: item.title,
       description: item.description ?? null,

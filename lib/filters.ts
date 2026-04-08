@@ -8,6 +8,10 @@ function normalizeList(values: string[]) {
   return values.map(normalize).filter(Boolean);
 }
 
+function normalizeSearchRef(value: string) {
+  return value.toLowerCase().trim().replace(/\/+$/, "");
+}
+
 export function formatCurrency(priceCents: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -26,6 +30,8 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
   const excludes = normalizeList(user.filters.excludeKeywords);
   const allowlist = normalizeList(user.filters.sellersAllowlist);
   const blocklist = normalizeList(user.filters.sellersBlocklist);
+  const trackedSearches = user.filters.searchUrls.map(normalizeSearchRef);
+  const trackedSearchMatch = candidate.searchUrl ? trackedSearches.includes(normalizeSearchRef(candidate.searchUrl)) : false;
 
   if (!user.alertsEnabled) {
     return { matches: false, score: 0, matchedKeywords: [], notes: ["Alerts disabled"] };
@@ -45,7 +51,8 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
 
   const matchedKeywords = includes.filter((keyword) => haystack.includes(keyword));
   const requiresAllKeywords = user.filters.keywordMode === "and";
-  const keywordMatched = includes.length === 0 ? true : requiresAllKeywords ? matchedKeywords.length === includes.length : matchedKeywords.length > 0;
+  const keywordMatched =
+    includes.length === 0 ? trackedSearchMatch || trackedSearches.length === 0 : requiresAllKeywords ? matchedKeywords.length === includes.length : matchedKeywords.length > 0;
 
   if (!keywordMatched) {
     return { matches: false, score: 0, matchedKeywords: [], notes: ["No keyword match"] };
@@ -62,7 +69,11 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
   }
 
   const notes: string[] = [];
-  let score = 48 + matchedKeywords.length * 11;
+  let score = (trackedSearchMatch ? 64 : 48) + matchedKeywords.length * 11;
+
+  if (trackedSearchMatch) {
+    notes.push("Tracked search hit");
+  }
 
   if (categories.length > 0) {
     score += 5;

@@ -80,7 +80,7 @@ export const copy = {
     navCookies: "Cookies",
     navGdpr: "GDPR",
     productFeed: "Public market board",
-    productFeedBody: "Browse the latest finds already routed into Vintel and cut them by category or price lane.",
+    productFeedBody: "Search live Vinted inventory, cut it by category or price lane, and turn good queries into tracked sniper hunts.",
     connectTelegramBody:
       "Use the private Telegram deep link below to bind your bot chat to your Gmail account and receive your own private alerts.",
     filterKeywords: "Include keywords",
@@ -139,7 +139,15 @@ export const copy = {
     homeNoListings: "No fresh finds yet. The next drop will appear here automatically.",
     homeKeywordMode: "AND / OR keywords",
     homeCategoryMode: "Category cuts",
-    homePriceMode: "Price lanes"
+    homePriceMode: "Price lanes",
+    homeLiveReady: "Live Vinted feed ready",
+    homeLiveSearching: "Scanning Vinted live",
+    homeLiveResults: "{count} live hits",
+    homeLiveFailed: "Vinted live search is temporarily unavailable.",
+    homeTrackSearch: "Track similar items",
+    homeTrackSimilar: "Track similar",
+    homeTrackSignIn: "Sign in to track",
+    homeTrackSaved: "Search saved to your sniper setup."
   },
   it: {
     brand: "Vintel",
@@ -194,7 +202,7 @@ export const copy = {
     navCookies: "Cookie",
     navGdpr: "GDPR",
     productFeed: "Bacheca mercato pubblica",
-    productFeedBody: "Esplora gli ultimi affari gia' instradati in Vintel e tagliali per categoria o fascia prezzo.",
+    productFeedBody: "Cerca l'inventario Vinted live, taglialo per categoria o fascia prezzo e trasforma le query buone in cacce sniper tracciate.",
     connectTelegramBody:
       "Usa il deep link privato qui sotto per collegare la chat Telegram al tuo account Gmail e ricevere i tuoi alert personali.",
     filterKeywords: "Keyword da includere",
@@ -253,6 +261,14 @@ export const copy = {
     homeNoListings: "Ancora nessun nuovo affare. Il prossimo drop comparira' qui in automatico.",
     homeKeywordMode: "Keyword AND / OR",
     homeCategoryMode: "Tagli categoria",
-    homePriceMode: "Corsie prezzo"
+    homePriceMode: "Corsie prezzo",
+    homeLiveReady: "Feed Vinted live pronto",
+    homeLiveSearching: "Scansione Vinted live",
+    homeLiveResults: "{count} hit live",
+    homeLiveFailed: "La ricerca live Vinted non e' disponibile in questo momento.",
+    homeTrackSearch: "Traccia articoli simili",
+    homeTrackSimilar: "Traccia simili",
+    homeTrackSignIn: "Accedi per tracciare",
+    homeTrackSaved: "Ricerca salvata nella tua configurazione sniper."
   }
 } as const;

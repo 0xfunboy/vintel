@@ -134,6 +134,11 @@ export async function getUserByTelegramLinkToken(token: string) {
   return users.find((user) => user.telegramLinkToken === token) ?? null;
 }
 
+export async function getUserByTelegramChatId(chatId: string) {
+  const users = await readUsers();
+  return users.find((user) => user.telegramChatId === chatId) ?? null;
+}
+
 export async function updateUserById(userId: string, updater: (user: UserRecord) => UserRecord) {
   const users = await readUsers();
   let updated: UserRecord | null = null;

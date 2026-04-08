@@ -35,6 +35,7 @@ export type ListingRecord = {
   id: string;
   source: string;
   sourceListingId: string;
+  sourceSearchUrl: string | null;
   category: string | null;
   title: string;
   description: string | null;
@@ -67,6 +68,7 @@ export type AlertRecord = {
 export type IngestListing = {
   source: string;
   sourceListingId: string;
+  searchUrl?: string | null;
   category?: string | null;
   title: string;
   description?: string | null;

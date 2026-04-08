@@ -23,7 +23,7 @@ const body = Manrope({
 export const metadata: Metadata = {
   metadataBase: new URL("https://app.eeess.cyou"),
   title: "Vintel | Vinted sniper",
-  description: "Vintel turns fresh Vinted listings into a clean public market board with optional personal filters and Telegram delivery."
+  description: "Vintel searches Vinted live, turns good queries into tracked sniper hunts, and routes manual-open alerts into Telegram."
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
