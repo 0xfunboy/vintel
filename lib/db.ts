@@ -82,7 +82,7 @@ function normalizeUser(user: UserRecord): UserRecord {
 }
 
 async function ensureDataDir() {
-  await mkdir(dataDir, { recursive: true });
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
 }
 
 async function loadJson<T>(fileName: string, fallback: T): Promise<T> {
@@ -101,7 +101,7 @@ async function loadJson<T>(fileName: string, fallback: T): Promise<T> {
 async function saveJson<T>(fileName: string, value: T) {
   await ensureDataDir();
   const filePath = path.join(dataDir, fileName);
-  await writeFile(filePath, JSON.stringify(value, null, 2) + "\n", "utf8");
+  await writeFile(filePath, JSON.stringify(value, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
 }
 
 export async function readUsers() {

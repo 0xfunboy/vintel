@@ -181,7 +181,14 @@ export const copy = {
     trackDialogSubmit: "Save to tracking list",
     trackDialogCancel: "Cancel",
     trackDialogTelegramHint: "When Telegram is linked, Vintel will confirm this hunt in chat and send future matches there.",
-    trackDialogSaved: "Tracking updated."
+    trackDialogSaved: "Tracking updated.",
+    filterCustomUrl: "Add custom Vinted search URL",
+    filterCustomUrlLabel: "Hunt label (optional)",
+    filterCustomUrlPlaceholder: "https://www.vinted.it/catalog?search_text=...",
+    filterCustomUrlSubmit: "Track URL",
+    copyUrl: "Copy URL",
+    copiedUrl: "Copied!",
+    openUrl: "Open"
   },
   it: {
     brand: "Vintel",
@@ -338,6 +345,13 @@ export const copy = {
     trackDialogSubmit: "Salva nella tracking list",
     trackDialogCancel: "Annulla",
     trackDialogTelegramHint: "Quando Telegram e' collegato, Vintel confermera' questa caccia in chat e inviera' li' i match futuri.",
-    trackDialogSaved: "Tracking aggiornato."
+    trackDialogSaved: "Tracking aggiornato.",
+    filterCustomUrl: "Aggiungi URL di ricerca Vinted personalizzata",
+    filterCustomUrlLabel: "Label caccia (opzionale)",
+    filterCustomUrlPlaceholder: "https://www.vinted.it/catalog?search_text=...",
+    filterCustomUrlSubmit: "Traccia URL",
+    copyUrl: "Copia URL",
+    copiedUrl: "Copiato!",
+    openUrl: "Apri"
   }
 } as const;

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import {
+  addTrackedUrlAction,
   deleteAccountAction,
   linkTelegramChatIdAction,
   removeTrackedSearchAction,
@@ -14,10 +15,11 @@ import { ensureUser, exportUserData, getUserByEmail, readAlerts, readListings } 
 import { formatCurrency } from "@/lib/filters";
 import { copy, getLocalePreference, getThemePreference } from "@/lib/i18n";
 import { buildTelegramDeepLink, buildTelegramLinkCommand } from "@/lib/telegram";
+import { CopyButton } from "@/components/copy-button";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
+    dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
 }
@@ -55,7 +57,6 @@ export default async function DashboardPage() {
 
   const listings = allListings.filter((listing) => listing.matchedUserIds.includes(user.id));
   const alerts = allAlerts.filter((alert) => alert.userId === user.id).slice(0, 12);
-  const matchedKeywords = [...new Set(listings.flatMap((listing) => listing.matchedKeywords))].slice(0, 8);
   const trackedSearches = user.filters.trackedSearches;
   const today = new Date().toISOString().slice(0, 10);
   const snipedToday = listings.filter((listing) => listing.discoveredAt.slice(0, 10) === today).length;
@@ -64,6 +65,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="dashboard-grid">
+      {/* ── Hero ─────────────────────────────────────── */}
       <section className="content-panel hero-dashboard">
         <div className="hero-stack">
           <div>
@@ -106,15 +108,99 @@ export default async function DashboardPage() {
           </article>
           <article className="status-card">
             <span className="metric-label">{t.dashboardMetricTelegram}</span>
-            <strong className="metric-value">{user.telegramChatId ? t.telegramConnected : t.telegramNotConnected}</strong>
-          </article>
-          <article className="status-card">
-            <span className="metric-label">{t.dashboardMetricKeywords}</span>
-            <strong className="metric-value">{matchedKeywords.length}</strong>
+            <strong className="metric-value metric-value-sm">
+              {user.telegramChatId ? t.telegramConnected : t.telegramNotConnected}
+            </strong>
           </article>
         </div>
       </section>
 
+      {/* ── Tracked Items ─────────────────────────────── */}
+      <section className="content-panel tracked-panel">
+        <div className="panel-head">
+          <div>
+            <h2>{t.dashboardTracked}</h2>
+            <p>{t.dashboardTrackedBody}</p>
+          </div>
+        </div>
+
+        {/* Add custom URL form */}
+        <form action={addTrackedUrlAction} className="add-url-form">
+          <input
+            name="searchUrl"
+            type="url"
+            required
+            placeholder={t.filterCustomUrlPlaceholder}
+            className="add-url-input"
+          />
+          <input name="label" placeholder={t.filterCustomUrlLabel} className="add-url-label-input" />
+          <button className="ghost-button add-url-submit" type="submit">
+            {t.filterCustomUrlSubmit}
+          </button>
+        </form>
+
+        {trackedSearches.length === 0 ? (
+          <div className="empty-state">{t.dashboardTrackedEmpty}</div>
+        ) : (
+          <div className="tracked-table-wrap">
+            <table className="tracked-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>{t.filterCategories}</th>
+                  <th>{t.filterKeywords}</th>
+                  <th>{t.filterMaxPrice}</th>
+                  <th>URL</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {trackedSearches.map((trackedSearch, i) => (
+                  <tr className="tracked-row" key={trackedSearch.id}>
+                    <td className="tracked-index">{i + 1}</td>
+                    <td>
+                      <div className="tracked-label" title={trackedSearch.label}>
+                        {trackedSearch.label}
+                      </div>
+                      {trackedSearch.categoryTitle ? (
+                        <div className="tracked-sub">{trackedSearch.categoryTitle}</div>
+                      ) : null}
+                    </td>
+                    <td className="tracked-keywords">
+                      {trackedSearch.includeKeywords.length > 0
+                        ? trackedSearch.includeKeywords.slice(0, 4).join(", ") +
+                          (trackedSearch.includeKeywords.length > 4 ? "…" : "")
+                        : <span className="tracked-empty-cell">—</span>}
+                    </td>
+                    <td className="tracked-price">
+                      {trackedSearch.maxPriceCents ? formatCurrency(trackedSearch.maxPriceCents, "EUR") : <span className="tracked-empty-cell">—</span>}
+                    </td>
+                    <td className="tracked-url-cell" title={trackedSearch.searchUrl}>
+                      {trackedSearch.searchUrl.replace(/^https?:\/\/[^/]+/, "").slice(0, 32)}…
+                    </td>
+                    <td>
+                      <div className="tracked-actions">
+                        <CopyButton text={trackedSearch.searchUrl} label={t.copyUrl} copiedLabel={t.copiedUrl} />
+                        <a className="icon-btn" href={trackedSearch.searchUrl} target="_blank" rel="noreferrer">
+                          {t.openUrl}
+                        </a>
+                        <form action={removeTrackedSearchAction}>
+                          <input type="hidden" name="trackedSearchId" value={trackedSearch.id} />
+                          <button className="icon-btn danger-btn-sm" type="submit">
+                            ×
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── Filters & Delivery ────────────────────────── */}
       <section className="content-panel">
         <div className="panel-head">
           <div>
@@ -172,12 +258,7 @@ export default async function DashboardPage() {
             <input name="sellersBlocklist" defaultValue={user.filters.sellersBlocklist.join(", ")} />
           </label>
 
-          <label className="field-wide">
-            <span>{t.filterSearchUrls}</span>
-            <textarea name="searchUrls" defaultValue={user.filters.searchUrls.join("\n")} />
-          </label>
-
-          <div className="check-row">
+          <div className="check-row field-wide">
             <label className="check">
               <input type="checkbox" name="searchInDescription" defaultChecked={user.filters.searchInDescription} />
               <span>{t.filterSearchDescription}</span>
@@ -192,12 +273,13 @@ export default async function DashboardPage() {
             </label>
           </div>
 
-          <button className="primary-button" type="submit">
+          <button className="primary-button field-wide" type="submit">
             {t.saveSettings}
           </button>
         </form>
       </section>
 
+      {/* ── Telegram ──────────────────────────────────── */}
       <section className="content-panel">
         <div className="panel-head">
           <div>
@@ -206,28 +288,46 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="telegram-card">
-          <div className={user.telegramChatId ? "badge success" : "badge"}>{user.telegramChatId ? t.telegramConnected : t.telegramNotConnected}</div>
-          {telegramLink ? (
-            <div className="danger-actions">
-              <a className="primary-button" href={telegramLink} target="_blank" rel="noreferrer">
-                {t.autoLinkTelegram}
-              </a>
-              <a className="ghost-button" href={telegramLink} target="_blank" rel="noreferrer">
-                {t.openTelegram}
-              </a>
+        <div className="telegram-compact">
+          <div className="telegram-status-row">
+            <div className={user.telegramChatId ? "badge success" : "badge"}>
+              {user.telegramChatId ? t.telegramConnected : t.telegramNotConnected}
             </div>
-          ) : (
-            <p className="inline-note warning-note">{t.botUnavailable}</p>
-          )}
+            <div className="telegram-quick-actions">
+              {telegramLink ? (
+                <>
+                  <a className="icon-btn" href={telegramLink} target="_blank" rel="noreferrer">
+                    {t.autoLinkTelegram}
+                  </a>
+                  <a className="icon-btn" href={telegramLink} target="_blank" rel="noreferrer">
+                    {t.openTelegram}
+                  </a>
+                </>
+              ) : (
+                <span className="inline-note warning-note">{t.botUnavailable}</span>
+              )}
+              <form action={rotateTelegramToken} style={{ display: "contents" }}>
+                <button className="icon-btn" type="submit">
+                  {t.regenerateToken}
+                </button>
+              </form>
+              {user.telegramChatId ? (
+                <form action={unlinkTelegramAction} style={{ display: "contents" }}>
+                  <button className="icon-btn danger-btn-sm" type="submit">
+                    {t.unlinkTelegram}
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          </div>
 
-          <label className="field-wide">
+          <label className="field-wide" style={{ marginTop: "14px" }}>
             <span>{t.telegramManualCommand}</span>
             <input readOnly value={telegramLinkCommand} />
           </label>
           <p className="inline-note">{t.telegramManualCommandBody}</p>
 
-          <form action={linkTelegramChatIdAction} className="settings-form compact-settings-form">
+          <form action={linkTelegramChatIdAction} className="settings-form compact-settings-form" style={{ marginTop: "10px" }}>
             <label className="field-wide">
               <span>{t.telegramChatId}</span>
               <input name="telegramChatId" defaultValue={user.telegramChatId ?? ""} />
@@ -237,59 +337,10 @@ export default async function DashboardPage() {
               {t.telegramManualChatId}
             </button>
           </form>
-
-          <form action={rotateTelegramToken}>
-            <button className="ghost-button" type="submit">
-              {t.regenerateToken}
-            </button>
-          </form>
-
-          {user.telegramChatId ? (
-            <form action={unlinkTelegramAction}>
-              <button className="ghost-button" type="submit">
-                {t.unlinkTelegram}
-              </button>
-            </form>
-          ) : null}
         </div>
       </section>
 
-      <section className="content-panel">
-        <div className="panel-head">
-          <div>
-            <h2>{t.dashboardTracked}</h2>
-            <p>{t.dashboardTrackedBody}</p>
-          </div>
-        </div>
-
-        {trackedSearches.length === 0 ? (
-          <div className="empty-state">{t.dashboardTrackedEmpty}</div>
-        ) : (
-          <div className="activity-list">
-            {trackedSearches.map((trackedSearch) => (
-              <div className="activity-row activity-row-spread" key={trackedSearch.id}>
-                <div className="activity-copy">
-                  <strong>{trackedSearch.label}</strong>
-                  <span>{trackedSearch.query || trackedSearch.searchUrl}</span>
-                  <span>
-                    {[trackedSearch.categoryTitle, trackedSearch.maxPriceCents ? formatCurrency(trackedSearch.maxPriceCents, "EUR") : null]
-                      .filter(Boolean)
-                      .join(" • ")}
-                  </span>
-                </div>
-
-                <form action={removeTrackedSearchAction}>
-                  <input type="hidden" name="trackedSearchId" value={trackedSearch.id} />
-                  <button className="ghost-button" type="submit">
-                    {t.dashboardTrackRemove}
-                  </button>
-                </form>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
+      {/* ── Matched Listings ──────────────────────────── */}
       <section className="content-panel listings-panel">
         <div className="panel-head">
           <div>
@@ -326,14 +377,6 @@ export default async function DashboardPage() {
                   ))}
                 </div>
 
-                <div className="token-row muted-row">
-                  {listing.notes.map((note) => (
-                    <span className="token subdued" key={note}>
-                      {note}
-                    </span>
-                  ))}
-                </div>
-
                 <div className="listing-actions">
                   <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
                     {t.buy}
@@ -348,11 +391,16 @@ export default async function DashboardPage() {
         )}
       </section>
 
+      {/* ── Activity ──────────────────────────────────── */}
       <section className="content-panel">
         <div className="panel-head">
           <div>
             <h2>{t.activity}</h2>
-            <p>{exportData ? `${exportData.alerts.length} total alerts in your account history.` : t.dashboardActivityBody}</p>
+            <p>
+              {exportData
+                ? `${exportData.alerts.length} total alerts in your account history.`
+                : t.dashboardActivityBody}
+            </p>
           </div>
         </div>
 
@@ -370,6 +418,7 @@ export default async function DashboardPage() {
         )}
       </section>
 
+      {/* ── GDPR ──────────────────────────────────────── */}
       <section className="content-panel danger-panel">
         <div className="panel-head">
           <div>

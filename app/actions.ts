@@ -1,12 +1,13 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { redirect } from "next/navigation";
 
 import { auth, isGoogleConfigured, signIn, signOut } from "@/auth";
 import { deleteUserData, getUserByEmail, updateUserById } from "@/lib/db";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { normalizeVintedCatalogUrl } from "@/lib/vinted";
 
 function parseCsv(value: FormDataEntryValue | null) {
   return String(value ?? "")
@@ -84,6 +85,57 @@ export async function saveDashboardSettings(formData: FormData) {
   }));
 
   redirect("/dashboard?saved=1");
+}
+
+export async function addTrackedUrlAction(formData: FormData) {
+  const user = await requireUser();
+  const rawUrl = String(formData.get("searchUrl") ?? "").trim();
+  const label = String(formData.get("label") ?? "").trim();
+
+  if (!rawUrl) {
+    redirect("/dashboard?tracked=missing-url");
+  }
+
+  let normalized: string | null = null;
+  try {
+    normalized = normalizeVintedCatalogUrl(rawUrl);
+  } catch {
+    redirect("/dashboard?tracked=invalid-url");
+  }
+
+  if (!normalized) {
+    redirect("/dashboard?tracked=invalid-url");
+  }
+
+  const now = new Date().toISOString();
+  const trackedSearchLabel = label || normalized;
+
+  await updateUserById(user.id, (current) => {
+    const existing = current.filters.trackedSearches.find((e) => e.searchUrl === normalized);
+    const trackedSearch = {
+      id: existing?.id ?? randomUUID(),
+      label: trackedSearchLabel,
+      query: "",
+      searchUrl: normalized!,
+      categoryTitle: null,
+      includeKeywords: [],
+      minPriceCents: null,
+      maxPriceCents: null,
+      createdAt: existing?.createdAt ?? now,
+      lastTrackedAt: now
+    };
+
+    return {
+      ...current,
+      filters: {
+        ...current.filters,
+        searchUrls: [...new Set([normalized!, ...current.filters.searchUrls])],
+        trackedSearches: [trackedSearch, ...current.filters.trackedSearches.filter((e) => e.searchUrl !== normalized)]
+      }
+    };
+  });
+
+  redirect("/dashboard?tracked=added");
 }
 
 export async function rotateTelegramToken() {

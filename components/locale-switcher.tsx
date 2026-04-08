@@ -10,6 +10,8 @@ type LocaleSwitcherProps = {
   label: string;
 };
 
+const flags: Record<Locale, string> = { en: "🇬🇧", it: "🇮🇹" };
+
 export function LocaleSwitcher({ initialLocale, label }: LocaleSwitcherProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -17,12 +19,8 @@ export function LocaleSwitcher({ initialLocale, label }: LocaleSwitcherProps) {
   async function updateLocale(nextLocale: Locale) {
     await fetch("/api/preferences", {
       method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        locale: nextLocale
-      })
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ locale: nextLocale })
     });
 
     startTransition(() => {
@@ -31,23 +29,19 @@ export function LocaleSwitcher({ initialLocale, label }: LocaleSwitcherProps) {
   }
 
   return (
-    <div className="segmented" aria-label={label}>
-      <button
-        type="button"
-        className={initialLocale === "en" ? "segmented-button is-active" : "segmented-button"}
-        disabled={isPending}
-        onClick={() => updateLocale("en")}
-      >
-        EN
-      </button>
-      <button
-        type="button"
-        className={initialLocale === "it" ? "segmented-button is-active" : "segmented-button"}
-        disabled={isPending}
-        onClick={() => updateLocale("it")}
-      >
-        IT
-      </button>
+    <div className="locale-btns" aria-label={label}>
+      {(["en", "it"] as Locale[]).map((locale) => (
+        <button
+          key={locale}
+          type="button"
+          className={initialLocale === locale ? "locale-btn is-active" : "locale-btn"}
+          disabled={isPending}
+          onClick={() => updateLocale(locale)}
+          title={locale.toUpperCase()}
+        >
+          {flags[locale]}
+        </button>
+      ))}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   writeAlerts
 } from "./db";
 import type { AlertRecord, ListingRecord, Locale, UserRecord } from "./types";
+import { normalizeVintedCatalogUrl } from "./vinted";
 
 type TelegramGetMeResponse = {
   ok: boolean;
@@ -42,13 +43,13 @@ const telegramCopy = {
       "Link this chat to Vintel, save tracked hunts, receive live matches here, and open every listing manually only when it is worth acting on.",
     helpTitle: "What you can do here",
     helpBody:
-      "/status checks your linked account and hunts. /link <token> links this chat from your dashboard. /id shows the chat id for manual linking in Vintel.",
+      "/status — account &amp; hunts. /hunts — list tracked hunts. /remove N — remove hunt by number. /addurl URL — add Vinted search URL. /link TOKEN — link from dashboard. /id — show your chat id.",
     notLinked:
       "This chat is not linked yet. Open Vintel and use the automatic Telegram button, or paste your chat id in the dashboard after running /id here.",
     linked: "Telegram is now linked to <b>{name}</b>. Alerts for your tracked searches will land in this chat.",
     missingToken: "Missing start token. Open the Telegram link directly from your Vintel dashboard to bind this chat.",
     unknownToken: "Unknown or expired link token. Rotate the Telegram token from your dashboard and try again.",
-    linkUsage: "Use /link <token> with the command shown in your dashboard, or paste the chat id from /id into Vintel.",
+    linkUsage: "Use /link TOKEN (from your dashboard) to link this chat, or paste the chat id from /id into Vintel.",
     chatIdTitle: "Manual Telegram link",
     chatIdBody: "Your chat id is <b>{chatId}</b>. Paste it into the Vintel dashboard if you want to link this chat manually.",
     statusTitle: "Chat status",
@@ -58,6 +59,8 @@ const telegramCopy = {
     statusListings: "Stored matches: <b>{count}</b>",
     statusAlerts: "Delivered alerts: <b>{count}</b>",
     statusDelivery: "Telegram delivery: <b>{value}</b>",
+    statusMinScore: "Min score: <b>{value}</b>",
+    statusKeywordMode: "Keyword mode: <b>{value}</b>",
     enabled: "enabled",
     disabled: "disabled",
     openApp: "Open Vintel",
@@ -73,7 +76,24 @@ const telegramCopy = {
     trackSavedCategory: "Category: <b>{value}</b>",
     trackSavedBudget: "Budget cap: <b>{value}</b>",
     trackSavedKeywords: "Keywords: <b>{value}</b>",
-    trackSavedBody: "Vintel will now watch this hunt and send fresh matches here."
+    trackSavedBody: "Vintel will now watch this hunt and send fresh matches here.",
+    huntsTitle: "Your tracked hunts",
+    huntsEmpty: "No tracked hunts yet. Add one from the Vintel dashboard or use /addurl.",
+    huntsRemoveHint: "Use /remove &lt;number&gt; to delete a hunt.",
+    huntsRemoved: "Hunt <b>{label}</b> removed.",
+    huntsRemoveInvalid: "Invalid hunt number. Use /hunts to see the list.",
+    addUrlUsage: "Usage: /addurl &lt;Vinted search URL&gt;",
+    addUrlInvalid: "Invalid or non-Vinted URL. Only vinted.it and vinted.com URLs are accepted.",
+    addUrlSaved: "URL tracked: <b>{url}</b>\nVintel will now watch this search and send fresh matches here.",
+    settingsTitle: "Your current filters",
+    settingsCategories: "Categories: <b>{value}</b>",
+    settingsKeywords: "Include keywords: <b>{value}</b>",
+    settingsExclude: "Exclude keywords: <b>{value}</b>",
+    settingsMode: "Keyword mode: <b>{value}</b>",
+    settingsMinPrice: "Min price: <b>{value}</b>",
+    settingsMaxPrice: "Max price: <b>{value}</b>",
+    settingsScore: "Min score: <b>{value}</b>",
+    settingsNone: "(none)"
   },
   it: {
     welcomeTitle: "Bot sniper Vintel",
@@ -81,13 +101,13 @@ const telegramCopy = {
       "Collega questa chat a Vintel, salva cacce tracciate, ricevi qui i match live e apri ogni listing manualmente solo quando vale la pena agire.",
     helpTitle: "Cosa puoi fare qui",
     helpBody:
-      "/status controlla account e cacce attive. /link <token> collega questa chat dalla dashboard. /id mostra il chat id per il collegamento manuale in Vintel.",
+      "/status controlla account e cacce attive. /hunts elenca le ricerche tracciate. /remove &lt;n&gt; rimuove la caccia per numero. /addurl &lt;url&gt; aggiunge un URL di ricerca Vinted. /link &lt;token&gt; collega questa chat dalla dashboard. /id mostra il chat id per il collegamento manuale.",
     notLinked:
       "Questa chat non e' ancora collegata. Apri Vintel e usa il bottone Telegram automatico, oppure incolla il chat id mostrato da /id nella dashboard.",
     linked: "Telegram e' ora collegato a <b>{name}</b>. Gli alert delle ricerche tracciate arriveranno in questa chat.",
     missingToken: "Token /start mancante. Apri direttamente il link Telegram dalla dashboard Vintel per collegare questa chat.",
     unknownToken: "Token di collegamento sconosciuto o scaduto. Rigenera il token dalla dashboard e riprova.",
-    linkUsage: "Usa /link <token> con il comando mostrato nella dashboard, oppure incolla in Vintel il chat id ottenuto da /id.",
+    linkUsage: "Usa /link TOKEN (dalla dashboard) per collegare questa chat, oppure incolla in Vintel il chat id ottenuto da /id.",
     chatIdTitle: "Collegamento Telegram manuale",
     chatIdBody: "Il tuo chat id e' <b>{chatId}</b>. Incollalo nella dashboard Vintel se vuoi collegare questa chat manualmente.",
     statusTitle: "Stato chat",
@@ -97,6 +117,8 @@ const telegramCopy = {
     statusListings: "Match salvati: <b>{count}</b>",
     statusAlerts: "Alert consegnati: <b>{count}</b>",
     statusDelivery: "Consegna Telegram: <b>{value}</b>",
+    statusMinScore: "Score minimo: <b>{value}</b>",
+    statusKeywordMode: "Logica keyword: <b>{value}</b>",
     enabled: "attiva",
     disabled: "disattiva",
     openApp: "Apri Vintel",
@@ -112,7 +134,24 @@ const telegramCopy = {
     trackSavedCategory: "Categoria: <b>{value}</b>",
     trackSavedBudget: "Cap prezzo: <b>{value}</b>",
     trackSavedKeywords: "Keyword: <b>{value}</b>",
-    trackSavedBody: "Vintel monitorera' ora questa caccia e inviera' qui i match freschi."
+    trackSavedBody: "Vintel monitorera' ora questa caccia e inviera' qui i match freschi.",
+    huntsTitle: "Le tue cacce tracciate",
+    huntsEmpty: "Ancora nessuna caccia tracciata. Aggiungila dalla dashboard Vintel o usa /addurl.",
+    huntsRemoveHint: "Usa /remove &lt;numero&gt; per eliminare una caccia.",
+    huntsRemoved: "Caccia <b>{label}</b> rimossa.",
+    huntsRemoveInvalid: "Numero caccia non valido. Usa /hunts per vedere la lista.",
+    addUrlUsage: "Uso: /addurl &lt;URL ricerca Vinted&gt;",
+    addUrlInvalid: "URL non valido o non Vinted. Sono accettati solo URL vinted.it e vinted.com.",
+    addUrlSaved: "URL tracciato: <b>{url}</b>\nVintel monitorera' ora questa ricerca e inviera' qui i match freschi.",
+    settingsTitle: "I tuoi filtri attuali",
+    settingsCategories: "Categorie: <b>{value}</b>",
+    settingsKeywords: "Keyword incluse: <b>{value}</b>",
+    settingsExclude: "Keyword escluse: <b>{value}</b>",
+    settingsMode: "Logica keyword: <b>{value}</b>",
+    settingsMinPrice: "Prezzo minimo: <b>{value}</b>",
+    settingsMaxPrice: "Prezzo massimo: <b>{value}</b>",
+    settingsScore: "Score minimo: <b>{value}</b>",
+    settingsNone: "(nessuno)"
   }
 } as const;
 
@@ -150,8 +189,8 @@ function getReplyKeyboard(locale: Locale, user: UserRecord | null) {
 
   return {
     keyboard: [
-      [{ text: "/menu" }, { text: "/status" }, { text: "/id" }],
-      [{ text: "/help" }, { text: "/link" }, { text: user ? "/dashboard" : "/start" }]
+      [{ text: "/menu" }, { text: "/status" }, { text: "/hunts" }],
+      [{ text: "/id" }, { text: "/help" }, { text: user ? "/dashboard" : "/start" }]
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -214,6 +253,10 @@ async function ensureTelegramBotMetadata() {
           { command: "id", description: "Show this Telegram chat id" },
           { command: "menu", description: "Show quick actions" },
           { command: "status", description: "Show linked account status" },
+          { command: "hunts", description: "List your tracked hunts" },
+          { command: "remove", description: "Remove a tracked hunt by number" },
+          { command: "addurl", description: "Add a Vinted search URL to track" },
+          { command: "settings", description: "Show your current filter settings" },
           { command: "help", description: "Show help and setup steps" },
           { command: "dashboard", description: "Open Vintel dashboard" }
         ]
@@ -295,6 +338,190 @@ async function sendBotStatus(chatId: string, user: UserRecord | null) {
     applyTemplate(t.statusListings, { count: matchedListings }),
     applyTemplate(t.statusAlerts, { count: deliveredAlerts }),
     applyTemplate(t.statusDelivery, { value: user.telegramEnabled ? t.enabled : t.disabled })
+  ];
+
+  await sendTelegramMessage(String(chatId), lines.join("\n"), {
+    reply_markup: getReplyKeyboard(locale, user),
+    disable_web_page_preview: true
+  });
+
+  await sendAppLinks(chatId, user);
+}
+
+async function sendBotHunts(chatId: string, user: UserRecord | null) {
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+
+  if (!user) {
+    await sendTelegramMessage(String(chatId), t.notLinked, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    await sendAppLinks(chatId, user);
+    return;
+  }
+
+  const hunts = user.filters.trackedSearches;
+
+  if (hunts.length === 0) {
+    await sendTelegramMessage(String(chatId), `<b>${t.huntsTitle}</b>\n${t.huntsEmpty}`, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return;
+  }
+
+  const lines = [`<b>${t.huntsTitle}</b> (${hunts.length})`];
+  hunts.slice(0, 15).forEach((hunt, i) => {
+    const parts: string[] = [`${i + 1}. <b>${escapeHtml(hunt.label)}</b>`];
+    if (hunt.categoryTitle) {
+      parts.push(`[${escapeHtml(hunt.categoryTitle)}]`);
+    }
+    if (hunt.maxPriceCents) {
+      parts.push(`max ${(hunt.maxPriceCents / 100).toFixed(0)}€`);
+    }
+    if (hunt.includeKeywords.length > 0) {
+      parts.push(escapeHtml(hunt.includeKeywords.slice(0, 3).join(", ")));
+    }
+    lines.push(parts.join(" — "));
+  });
+
+  if (hunts.length > 15) {
+    lines.push(`…and ${hunts.length - 15} more`);
+  }
+
+  lines.push(`\n${t.huntsRemoveHint}`);
+
+  await sendTelegramMessage(String(chatId), lines.join("\n"), {
+    reply_markup: getReplyKeyboard(locale, user),
+    disable_web_page_preview: true
+  });
+}
+
+async function removeBotHunt(chatId: string, user: UserRecord | null, indexStr: string) {
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+
+  if (!user) {
+    await sendTelegramMessage(String(chatId), t.notLinked, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return { ok: true, action: "not-linked" as const };
+  }
+
+  const index = parseInt(indexStr.trim(), 10) - 1;
+  const hunt = user.filters.trackedSearches[index];
+
+  if (!hunt) {
+    await sendTelegramMessage(String(chatId), t.huntsRemoveInvalid, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return { ok: true, action: "remove-invalid" as const };
+  }
+
+  await updateUserById(user.id, (current) => ({
+    ...current,
+    filters: {
+      ...current.filters,
+      trackedSearches: current.filters.trackedSearches.filter((e) => e.id !== hunt.id),
+      searchUrls: current.filters.searchUrls.filter((e) => e !== hunt.searchUrl)
+    }
+  }));
+
+  await sendTelegramMessage(String(chatId), applyTemplate(t.huntsRemoved, { label: escapeHtml(hunt.label) }), {
+    reply_markup: getReplyKeyboard(locale, user)
+  });
+
+  return { ok: true, action: "removed" as const };
+}
+
+async function addBotUrl(chatId: string, user: UserRecord | null, rawUrl: string) {
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+
+  if (!user) {
+    await sendTelegramMessage(String(chatId), t.notLinked, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return { ok: true, action: "not-linked" as const };
+  }
+
+  if (!rawUrl.trim()) {
+    await sendTelegramMessage(String(chatId), t.addUrlUsage, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return { ok: true, action: "addurl-usage" as const };
+  }
+
+  let normalized: string | null = null;
+  try {
+    normalized = normalizeVintedCatalogUrl(rawUrl.trim());
+  } catch {
+    normalized = null;
+  }
+
+  if (!normalized) {
+    await sendTelegramMessage(String(chatId), t.addUrlInvalid, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return { ok: true, action: "addurl-invalid" as const };
+  }
+
+  const now = new Date().toISOString();
+  await updateUserById(user.id, (current) => {
+    const existing = current.filters.trackedSearches.find((e) => e.searchUrl === normalized);
+    const trackedSearch = {
+      id: existing?.id ?? randomUUID(),
+      label: existing?.label ?? normalized!,
+      query: "",
+      searchUrl: normalized!,
+      categoryTitle: null,
+      includeKeywords: [],
+      minPriceCents: null,
+      maxPriceCents: null,
+      createdAt: existing?.createdAt ?? now,
+      lastTrackedAt: now
+    };
+
+    return {
+      ...current,
+      filters: {
+        ...current.filters,
+        searchUrls: [...new Set([normalized!, ...current.filters.searchUrls])],
+        trackedSearches: [trackedSearch, ...current.filters.trackedSearches.filter((e) => e.searchUrl !== normalized)]
+      }
+    };
+  });
+
+  await sendTelegramMessage(String(chatId), applyTemplate(t.addUrlSaved, { url: escapeHtml(normalized) }), {
+    reply_markup: getReplyKeyboard(locale, user),
+    disable_web_page_preview: true
+  });
+
+  return { ok: true, action: "addurl-saved" as const };
+}
+
+async function sendBotSettings(chatId: string, user: UserRecord | null) {
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+
+  if (!user) {
+    await sendTelegramMessage(String(chatId), t.notLinked, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return;
+  }
+
+  const f = user.filters;
+  const none = t.settingsNone;
+
+  const lines = [
+    `<b>${t.settingsTitle}</b>`,
+    applyTemplate(t.settingsCategories, { value: f.categories.join(", ") || none }),
+    applyTemplate(t.settingsKeywords, { value: f.includeKeywords.join(", ") || none }),
+    applyTemplate(t.settingsExclude, { value: f.excludeKeywords.join(", ") || none }),
+    applyTemplate(t.settingsMode, { value: f.keywordMode.toUpperCase() }),
+    applyTemplate(t.settingsMinPrice, { value: f.minPriceCents != null ? `${(f.minPriceCents / 100).toFixed(2)} EUR` : none }),
+    applyTemplate(t.settingsMaxPrice, { value: f.maxPriceCents != null ? `${(f.maxPriceCents / 100).toFixed(2)} EUR` : none }),
+    applyTemplate(t.settingsScore, { value: String(f.minScore) })
   ];
 
   await sendTelegramMessage(String(chatId), lines.join("\n"), {
@@ -537,6 +764,26 @@ export async function handleTelegramWebhook(update: TelegramWebhookUpdate) {
   if (command === "/id") {
     await sendTelegramChatId(String(chatId), linkedUser);
     return { ok: true, action: "chat-id" as const };
+  }
+
+  if (command === "/hunts") {
+    await sendBotHunts(String(chatId), linkedUser);
+    return { ok: true, action: "hunts" as const };
+  }
+
+  if (command === "/remove") {
+    const payload = text.replace(/^\/remove(@\w+)?/, "").trim();
+    return removeBotHunt(String(chatId), linkedUser, payload);
+  }
+
+  if (command === "/addurl") {
+    const payload = text.replace(/^\/addurl(@\w+)?/, "").trim();
+    return addBotUrl(String(chatId), linkedUser, payload);
+  }
+
+  if (command === "/settings") {
+    await sendBotSettings(String(chatId), linkedUser);
+    return { ok: true, action: "settings" as const };
   }
 
   if (command === "/link") {
