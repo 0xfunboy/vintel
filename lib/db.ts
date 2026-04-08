@@ -2,7 +2,16 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 
-import type { AlertRecord, ListingRecord, Locale, Theme, UserExport, UserFilters, UserRecord } from "./types";
+import type {
+  AlertRecord,
+  ListingRecord,
+  Locale,
+  Theme,
+  TrackedSearchRecord,
+  UserExport,
+  UserFilters,
+  UserRecord
+} from "./types";
 
 const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(process.cwd(), "data");
 
@@ -17,8 +26,60 @@ const defaults: UserFilters = {
   minScore: 65,
   sellersAllowlist: [],
   sellersBlocklist: [],
-  searchUrls: []
+  searchUrls: [],
+  trackedSearches: []
 };
+
+function normalizeTrackedSearch(entry: Partial<TrackedSearchRecord> & { searchUrl?: string }) {
+  if (!entry.searchUrl) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+
+  return {
+    id: entry.id ?? randomUUID(),
+    label: entry.label ?? entry.query ?? entry.categoryTitle ?? entry.searchUrl,
+    query: entry.query ?? "",
+    searchUrl: entry.searchUrl,
+    categoryTitle: entry.categoryTitle ?? null,
+    includeKeywords: Array.isArray(entry.includeKeywords) ? entry.includeKeywords.filter(Boolean) : [],
+    minPriceCents: typeof entry.minPriceCents === "number" ? entry.minPriceCents : null,
+    maxPriceCents: typeof entry.maxPriceCents === "number" ? entry.maxPriceCents : null,
+    createdAt: entry.createdAt ?? now,
+    lastTrackedAt: entry.lastTrackedAt ?? entry.createdAt ?? now
+  } satisfies TrackedSearchRecord;
+}
+
+function normalizeFilters(filters?: Partial<UserFilters> | null): UserFilters {
+  const trackedSearches = Array.isArray(filters?.trackedSearches)
+    ? filters.trackedSearches
+        .map((entry) => normalizeTrackedSearch(entry))
+        .filter((entry): entry is TrackedSearchRecord => Boolean(entry))
+    : [];
+
+  const searchUrls = Array.isArray(filters?.searchUrls) ? filters.searchUrls.filter(Boolean) : [];
+  const trackedUrls = trackedSearches.map((entry) => entry.searchUrl);
+
+  return {
+    ...defaults,
+    ...filters,
+    categories: Array.isArray(filters?.categories) ? filters.categories.filter(Boolean) : [],
+    includeKeywords: Array.isArray(filters?.includeKeywords) ? filters.includeKeywords.filter(Boolean) : [],
+    excludeKeywords: Array.isArray(filters?.excludeKeywords) ? filters.excludeKeywords.filter(Boolean) : [],
+    sellersAllowlist: Array.isArray(filters?.sellersAllowlist) ? filters.sellersAllowlist.filter(Boolean) : [],
+    sellersBlocklist: Array.isArray(filters?.sellersBlocklist) ? filters.sellersBlocklist.filter(Boolean) : [],
+    searchUrls: [...new Set([...searchUrls, ...trackedUrls])],
+    trackedSearches
+  };
+}
+
+function normalizeUser(user: UserRecord): UserRecord {
+  return {
+    ...user,
+    filters: normalizeFilters(user.filters)
+  };
+}
 
 async function ensureDataDir() {
   await mkdir(dataDir, { recursive: true });
@@ -44,7 +105,8 @@ async function saveJson<T>(fileName: string, value: T) {
 }
 
 export async function readUsers() {
-  return loadJson<UserRecord[]>("users.json", []);
+  const users = await loadJson<UserRecord[]>("users.json", []);
+  return users.map(normalizeUser);
 }
 
 export async function writeUsers(users: UserRecord[]) {
@@ -79,7 +141,7 @@ export function createUserDefaults(locale: Locale, theme: Theme): Pick<UserRecor
     telegramLinkToken: createTelegramLinkToken(),
     telegramEnabled: true,
     alertsEnabled: true,
-    filters: defaults
+    filters: { ...defaults }
   };
 }
 
@@ -102,6 +164,7 @@ export async function ensureUser(input: {
             ...user,
             name: input.name ?? user.name,
             image: input.image ?? user.image,
+            filters: normalizeFilters(user.filters),
             updatedAt: now
           }
     );
@@ -148,8 +211,10 @@ export async function updateUserById(userId: string, updater: (user: UserRecord)
       return user;
     }
 
+    const draft = updater(user);
     updated = {
-      ...updater(user),
+      ...draft,
+      filters: normalizeFilters(draft.filters),
       updatedAt: new Date().toISOString()
     };
 

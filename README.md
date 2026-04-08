@@ -7,9 +7,10 @@ Production-oriented Next.js app for a Vinted sniper portal on `https://app.eeess
 - optional Google OAuth with Auth.js
 - guest-first homepage with live Vinted market search
 - private per-user dashboard for filters and delivery
+- track-similar modal that turns live searches and listings into tracked hunts
 - dark mode first, light mode available
 - English / Italian UI switch
-- Telegram chat linking through `/start <token>` plus menu, status, and help commands
+- Telegram chat linking through auto deep link, `/link <token>`, or manual chat id from `/id`
 - protected ingest API plus live Vinted poller for tracked searches
 - privacy, cookie, and GDPR pages
 - JSON persistence for single-host deployment
@@ -65,7 +66,7 @@ On this host, do not rebuild while `next start` is serving the same `.next` dire
 systemctl --user stop vinted-gpu-watch.service
 source ~/.nvm/nvm.sh
 nvm use 23.3.0
-pnpm build
+corepack pnpm build
 systemctl --user start vinted-gpu-watch.service
 ```
 

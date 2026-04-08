@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 
 import { auth, isGoogleConfigured, signIn, signOut } from "@/auth";
 import { deleteUserData, getUserByEmail, updateUserById } from "@/lib/db";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 function parseCsv(value: FormDataEntryValue | null) {
   return String(value ?? "")
@@ -94,6 +95,70 @@ export async function rotateTelegramToken() {
   }));
 
   redirect("/dashboard?telegram=rotated");
+}
+
+export async function linkTelegramChatIdAction(formData: FormData) {
+  const user = await requireUser();
+  const rawChatId = String(formData.get("telegramChatId") ?? "").trim();
+
+  if (!/^-?\d+$/.test(rawChatId)) {
+    redirect("/dashboard?telegram=invalid-chat-id");
+  }
+
+  await updateUserById(user.id, (current) => ({
+    ...current,
+    telegramChatId: rawChatId,
+    telegramEnabled: true
+  }));
+
+  try {
+    await sendTelegramMessage(rawChatId, "<b>Vintel</b>\nManual dashboard link confirmed for this chat.", {
+      disable_web_page_preview: true
+    });
+  } catch {
+    redirect("/dashboard?telegram=chat-unreachable");
+  }
+
+  redirect("/dashboard?telegram=linked");
+}
+
+export async function unlinkTelegramAction() {
+  const user = await requireUser();
+
+  await updateUserById(user.id, (current) => ({
+    ...current,
+    telegramChatId: null,
+    telegramEnabled: false
+  }));
+
+  redirect("/dashboard?telegram=unlinked");
+}
+
+export async function removeTrackedSearchAction(formData: FormData) {
+  const user = await requireUser();
+  const trackedSearchId = String(formData.get("trackedSearchId") ?? "").trim();
+
+  if (!trackedSearchId) {
+    redirect("/dashboard?tracked=missing");
+  }
+
+  await updateUserById(user.id, (current) => {
+    const nextTrackedSearches = current.filters.trackedSearches.filter((entry) => entry.id !== trackedSearchId);
+    const removedSearchUrl = current.filters.trackedSearches.find((entry) => entry.id === trackedSearchId)?.searchUrl ?? null;
+
+    return {
+      ...current,
+      filters: {
+        ...current.filters,
+        trackedSearches: nextTrackedSearches,
+        searchUrls: removedSearchUrl
+          ? current.filters.searchUrls.filter((entry) => entry !== removedSearchUrl)
+          : current.filters.searchUrls
+      }
+    };
+  });
+
+  redirect("/dashboard?tracked=removed");
 }
 
 export async function deleteAccountAction() {

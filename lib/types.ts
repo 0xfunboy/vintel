@@ -1,6 +1,19 @@
 export type Locale = "en" | "it";
 export type Theme = "dark" | "light";
 
+export type TrackedSearchRecord = {
+  id: string;
+  label: string;
+  query: string;
+  searchUrl: string;
+  categoryTitle: string | null;
+  includeKeywords: string[];
+  minPriceCents: number | null;
+  maxPriceCents: number | null;
+  createdAt: string;
+  lastTrackedAt: string;
+};
+
 export type UserFilters = {
   categories: string[];
   includeKeywords: string[];
@@ -13,6 +26,7 @@ export type UserFilters = {
   sellersAllowlist: string[];
   sellersBlocklist: string[];
   searchUrls: string[];
+  trackedSearches: TrackedSearchRecord[];
 };
 
 export type UserRecord = {

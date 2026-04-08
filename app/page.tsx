@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 import { HeroGlitchTitle } from "@/components/hero-glitch-title";
 import { PublicMarketBoard } from "@/components/public-market-board";
-import { readListings, readUsers } from "@/lib/db";
+import { TrackSimilarButton } from "@/components/track-similar-button";
+import { readAlerts, readListings, readUsers } from "@/lib/db";
 import { formatCurrency } from "@/lib/filters";
 import { copy, getLocalePreference } from "@/lib/i18n";
 import { getTelegramBotProfile } from "@/lib/telegram";
@@ -80,10 +81,11 @@ export default async function HomePage() {
   const session = await auth();
   const locale = await getLocalePreference();
   const t = copy[locale];
-  const [bot, storedListings, users, liveSearch] = await Promise.all([
+  const [bot, storedListings, users, alerts, liveSearch] = await Promise.all([
     getTelegramBotProfile(),
     readListings(),
     readUsers(),
+    readAlerts(),
     searchVintedCatalog({ locale, limit: 24 }).catch(() => null)
   ]);
 
@@ -178,6 +180,26 @@ export default async function HomePage() {
   const botUrl = bot?.username ? `https://t.me/${bot.username}` : null;
   const personalizeHref = session?.user?.email ? "/dashboard" : "/signin";
   const liveHitCount = liveSearch?.totalEntries ?? marketListings.length;
+  const today = new Date().toISOString().slice(0, 10);
+  const snipedToday = sortedStoredListings.filter((listing) => listing.discoveredAt.slice(0, 10) === today).length;
+  const activeHunts = users.reduce((total, user) => total + user.filters.trackedSearches.length, 0);
+  const alertsToday = alerts.filter((alert) => alert.sentAt.slice(0, 10) === today).length;
+  const dialogLabels = {
+    title: t.trackDialogTitle,
+    body: t.trackDialogBody,
+    label: t.trackDialogLabel,
+    query: t.trackDialogQuery,
+    category: t.trackDialogCategory,
+    keywords: t.trackDialogKeywords,
+    minPrice: t.trackDialogMinPrice,
+    maxPrice: t.trackDialogMaxPrice,
+    searchUrl: t.trackDialogSearchUrl,
+    submit: t.trackDialogSubmit,
+    cancel: t.trackDialogCancel,
+    telegramHint: t.trackDialogTelegramHint,
+    saved: t.trackDialogSaved,
+    failed: t.homeLiveFailed
+  };
 
   return (
     <main className="market-home market-home-refined">
@@ -220,6 +242,18 @@ export default async function HomePage() {
               <span>{t.homeTelegramTitle}</span>
               <strong>{bot?.username ? `@${bot.username}` : "offline"}</strong>
             </div>
+            <div className="hero-stat">
+              <span>{t.dashboardMetricToday}</span>
+              <strong>{snipedToday}</strong>
+            </div>
+            <div className="hero-stat">
+              <span>{t.dashboardMetricTracked}</span>
+              <strong>{activeHunts}</strong>
+            </div>
+            <div className="hero-stat">
+              <span>{t.dashboardMetricAlertsToday}</span>
+              <strong>{alertsToday}</strong>
+            </div>
           </div>
         </div>
 
@@ -252,9 +286,28 @@ export default async function HomePage() {
                   <p className="section-copy">{spotlight.description ?? spotlight.sellerName}</p>
                   <div className="spotlight-footer">
                     <strong>{formatCurrency(spotlight.priceCents, spotlight.currency)}</strong>
-                    <a className="primary-button" href={spotlight.url} target="_blank" rel="noreferrer">
-                      {t.openListing}
-                    </a>
+                    <div className="listing-actions">
+                      <a className="primary-button" href={spotlight.url} target="_blank" rel="noreferrer">
+                        {t.openListing}
+                      </a>
+                      <TrackSimilarButton
+                        allowTracking={Boolean(session?.user?.email)}
+                        trackHref={personalizeHref}
+                        buttonLabel={t.homeTrackSimilar}
+                        preset={{
+                          label: spotlight.title,
+                          query: spotlight.title,
+                          searchUrl: spotlight.sourceSearchUrl ?? buildVintedCatalogUrl({ query: spotlight.title }),
+                          categoryTitle: spotlight.category,
+                          includeKeywords: spotlight.matchedKeywords,
+                          minPriceCents: null,
+                          maxPriceCents: spotlight.priceCents,
+                          listingTitle: spotlight.title,
+                          listingPriceCents: spotlight.priceCents
+                        }}
+                        labels={dialogLabels}
+                      />
+                    </div>
                   </div>
                 </div>
               </>
@@ -337,7 +390,19 @@ export default async function HomePage() {
           trackSaved: t.homeTrackSaved,
           anyBudget: t.homeBudgetAny,
           upToPrice: t.homeBudgetUpTo,
-          manualBudget: t.homeBudgetManual
+          manualBudget: t.homeBudgetManual,
+          dialogTitle: t.trackDialogTitle,
+          dialogBody: t.trackDialogBody,
+          dialogLabel: t.trackDialogLabel,
+          dialogQuery: t.trackDialogQuery,
+          dialogCategory: t.trackDialogCategory,
+          dialogKeywords: t.trackDialogKeywords,
+          dialogMinPrice: t.trackDialogMinPrice,
+          dialogMaxPrice: t.trackDialogMaxPrice,
+          dialogSearchUrl: t.trackDialogSearchUrl,
+          dialogSubmit: t.trackDialogSubmit,
+          dialogCancel: t.trackDialogCancel,
+          dialogTelegramHint: t.trackDialogTelegramHint
         }}
       />
 
@@ -503,9 +568,29 @@ export default async function HomePage() {
                   <p>{listing.description ?? listing.sellerName}</p>
                   <div className="latest-feed-footer">
                     <strong>{formatCurrency(listing.priceCents, listing.currency)}</strong>
-                    <a href={listing.url} target="_blank" rel="noreferrer">
-                      {t.openListing}
-                    </a>
+                    <div className="listing-actions">
+                      <a href={listing.url} target="_blank" rel="noreferrer">
+                        {t.openListing}
+                      </a>
+                      <TrackSimilarButton
+                        allowTracking={Boolean(session?.user?.email)}
+                        trackHref={personalizeHref}
+                        buttonLabel={t.homeTrackSimilar}
+                        buttonClassName="ghost-button"
+                        preset={{
+                          label: listing.title,
+                          query: listing.title,
+                          searchUrl: listing.sourceSearchUrl ?? buildVintedCatalogUrl({ query: listing.title }),
+                          categoryTitle: listing.category,
+                          includeKeywords: listing.matchedKeywords,
+                          minPriceCents: null,
+                          maxPriceCents: listing.priceCents,
+                          listingTitle: listing.title,
+                          listingPriceCents: listing.priceCents
+                        }}
+                        labels={dialogLabels}
+                      />
+                    </div>
                   </div>
                 </div>
               </article>

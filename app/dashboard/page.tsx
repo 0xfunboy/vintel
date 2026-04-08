@@ -1,11 +1,19 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
-import { deleteAccountAction, rotateTelegramToken, saveDashboardSettings, signOutAction } from "@/app/actions";
+import {
+  deleteAccountAction,
+  linkTelegramChatIdAction,
+  removeTrackedSearchAction,
+  rotateTelegramToken,
+  saveDashboardSettings,
+  signOutAction,
+  unlinkTelegramAction
+} from "@/app/actions";
 import { ensureUser, exportUserData, getUserByEmail, readAlerts, readListings } from "@/lib/db";
 import { formatCurrency } from "@/lib/filters";
 import { copy, getLocalePreference, getThemePreference } from "@/lib/i18n";
-import { buildTelegramDeepLink } from "@/lib/telegram";
+import { buildTelegramDeepLink, buildTelegramLinkCommand } from "@/lib/telegram";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -48,6 +56,11 @@ export default async function DashboardPage() {
   const listings = allListings.filter((listing) => listing.matchedUserIds.includes(user.id));
   const alerts = allAlerts.filter((alert) => alert.userId === user.id).slice(0, 12);
   const matchedKeywords = [...new Set(listings.flatMap((listing) => listing.matchedKeywords))].slice(0, 8);
+  const trackedSearches = user.filters.trackedSearches;
+  const today = new Date().toISOString().slice(0, 10);
+  const snipedToday = listings.filter((listing) => listing.discoveredAt.slice(0, 10) === today).length;
+  const alertsToday = allAlerts.filter((alert) => alert.userId === user.id && alert.sentAt.slice(0, 10) === today).length;
+  const telegramLinkCommand = buildTelegramLinkCommand(user);
 
   return (
     <main className="dashboard-grid">
@@ -60,6 +73,9 @@ export default async function DashboardPage() {
           </div>
 
           <div className="toolbar-row">
+            <a className="ghost-button" href="/">
+              {t.navHome}
+            </a>
             <form action={signOutAction}>
               <button className="ghost-button" type="submit">
                 {t.signOut}
@@ -75,6 +91,18 @@ export default async function DashboardPage() {
           <article className="status-card">
             <span className="metric-label">{t.dashboardMetricListings}</span>
             <strong className="metric-value">{listings.length}</strong>
+          </article>
+          <article className="status-card">
+            <span className="metric-label">{t.dashboardMetricToday}</span>
+            <strong className="metric-value">{snipedToday}</strong>
+          </article>
+          <article className="status-card">
+            <span className="metric-label">{t.dashboardMetricTracked}</span>
+            <strong className="metric-value">{trackedSearches.length}</strong>
+          </article>
+          <article className="status-card">
+            <span className="metric-label">{t.dashboardMetricAlertsToday}</span>
+            <strong className="metric-value">{alertsToday}</strong>
           </article>
           <article className="status-card">
             <span className="metric-label">{t.dashboardMetricTelegram}</span>
@@ -181,19 +209,85 @@ export default async function DashboardPage() {
         <div className="telegram-card">
           <div className={user.telegramChatId ? "badge success" : "badge"}>{user.telegramChatId ? t.telegramConnected : t.telegramNotConnected}</div>
           {telegramLink ? (
-            <a className="primary-button" href={telegramLink} target="_blank" rel="noreferrer">
-              {t.openTelegram}
-            </a>
+            <div className="danger-actions">
+              <a className="primary-button" href={telegramLink} target="_blank" rel="noreferrer">
+                {t.autoLinkTelegram}
+              </a>
+              <a className="ghost-button" href={telegramLink} target="_blank" rel="noreferrer">
+                {t.openTelegram}
+              </a>
+            </div>
           ) : (
             <p className="inline-note warning-note">{t.botUnavailable}</p>
           )}
+
+          <label className="field-wide">
+            <span>{t.telegramManualCommand}</span>
+            <input readOnly value={telegramLinkCommand} />
+          </label>
+          <p className="inline-note">{t.telegramManualCommandBody}</p>
+
+          <form action={linkTelegramChatIdAction} className="settings-form compact-settings-form">
+            <label className="field-wide">
+              <span>{t.telegramChatId}</span>
+              <input name="telegramChatId" defaultValue={user.telegramChatId ?? ""} />
+            </label>
+            <p className="inline-note field-wide">{t.telegramManualChatIdHint}</p>
+            <button className="ghost-button" type="submit">
+              {t.telegramManualChatId}
+            </button>
+          </form>
 
           <form action={rotateTelegramToken}>
             <button className="ghost-button" type="submit">
               {t.regenerateToken}
             </button>
           </form>
+
+          {user.telegramChatId ? (
+            <form action={unlinkTelegramAction}>
+              <button className="ghost-button" type="submit">
+                {t.unlinkTelegram}
+              </button>
+            </form>
+          ) : null}
         </div>
+      </section>
+
+      <section className="content-panel">
+        <div className="panel-head">
+          <div>
+            <h2>{t.dashboardTracked}</h2>
+            <p>{t.dashboardTrackedBody}</p>
+          </div>
+        </div>
+
+        {trackedSearches.length === 0 ? (
+          <div className="empty-state">{t.dashboardTrackedEmpty}</div>
+        ) : (
+          <div className="activity-list">
+            {trackedSearches.map((trackedSearch) => (
+              <div className="activity-row activity-row-spread" key={trackedSearch.id}>
+                <div className="activity-copy">
+                  <strong>{trackedSearch.label}</strong>
+                  <span>{trackedSearch.query || trackedSearch.searchUrl}</span>
+                  <span>
+                    {[trackedSearch.categoryTitle, trackedSearch.maxPriceCents ? formatCurrency(trackedSearch.maxPriceCents, "EUR") : null]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </span>
+                </div>
+
+                <form action={removeTrackedSearchAction}>
+                  <input type="hidden" name="trackedSearchId" value={trackedSearch.id} />
+                  <button className="ghost-button" type="submit">
+                    {t.dashboardTrackRemove}
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="content-panel listings-panel">

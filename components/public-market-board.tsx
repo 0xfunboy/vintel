@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
 
+import { TrackSimilarButton } from "@/components/track-similar-button";
 import { formatCurrency } from "@/lib/filters";
 import type { ListingRecord, Locale } from "@/lib/types";
 import type { VintedFacetCategory } from "@/lib/vinted";
@@ -42,6 +43,18 @@ type PublicMarketBoardProps = {
     anyBudget: string;
     upToPrice: string;
     manualBudget: string;
+    dialogTitle: string;
+    dialogBody: string;
+    dialogLabel: string;
+    dialogQuery: string;
+    dialogCategory: string;
+    dialogKeywords: string;
+    dialogMinPrice: string;
+    dialogMaxPrice: string;
+    dialogSearchUrl: string;
+    dialogSubmit: string;
+    dialogCancel: string;
+    dialogTelegramHint: string;
   };
 };
 
@@ -88,7 +101,6 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
   const [selectedMaxPrice, setSelectedMaxPrice] = useState<number>(() => getInitialPriceCap(initialState.searchUrl));
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [trackMessage, setTrackMessage] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
   const deferredMaxPrice = useDeferredValue(selectedMaxPrice);
   const activeCategory =
@@ -160,50 +172,22 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
 
   const preview = filtered.slice(0, 12);
   const searchContext = deferredQuery.trim() || market.query;
-
-  async function trackSimilar(listing?: ListingRecord) {
-    if (!allowTracking) {
-      window.location.href = trackHref;
-      return;
-    }
-
-    setTrackMessage(null);
-
-    try {
-      const response = await fetch("/api/sniper/track", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          query: searchContext || listing?.title || "",
-          searchUrl: market.searchUrl,
-          categoryTitle: activeCategory?.title ?? listing?.category ?? null,
-          listingTitle: listing?.title ?? null,
-          listingPriceCents: listing?.priceCents ?? null,
-          maxPriceCents: selectedMaxPrice > 0 ? selectedMaxPrice * 100 : null
-        })
-      });
-
-      if (response.status === 401) {
-        window.location.href = trackHref;
-        return;
-      }
-
-      const payload = (await response.json()) as {
-        ok: boolean;
-        error?: string;
-      };
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? labels.liveFailed);
-      }
-
-      setTrackMessage(labels.trackSaved);
-    } catch (trackError) {
-      setTrackMessage(trackError instanceof Error ? trackError.message : labels.liveFailed);
-    }
-  }
+  const dialogLabels = {
+    title: labels.dialogTitle,
+    body: labels.dialogBody,
+    label: labels.dialogLabel,
+    query: labels.dialogQuery,
+    category: labels.dialogCategory,
+    keywords: labels.dialogKeywords,
+    minPrice: labels.dialogMinPrice,
+    maxPrice: labels.dialogMaxPrice,
+    searchUrl: labels.dialogSearchUrl,
+    submit: labels.dialogSubmit,
+    cancel: labels.dialogCancel,
+    telegramHint: labels.dialogTelegramHint,
+    saved: labels.trackSaved,
+    failed: labels.liveFailed
+  };
 
   return (
     <section className="content-panel market-panel market-panel-refined" id="market">
@@ -304,11 +288,28 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
 
           <div className="market-utility-row">
             {(searchContext || activeCategory) && (
-              <button className="ghost-button" type="button" onClick={() => trackSimilar()}>
-                {allowTracking ? labels.trackSearch : labels.trackSignIn}
-              </button>
+              <TrackSimilarButton
+                allowTracking={allowTracking}
+                trackHref={trackHref}
+                buttonLabel={labels.trackSearch}
+                preset={{
+                  label: searchContext || activeCategory?.title || labels.title,
+                  query: searchContext,
+                  searchUrl: market.searchUrl,
+                  categoryTitle: activeCategory?.title ?? null,
+                  includeKeywords: searchContext
+                    .split(/\s+/)
+                    .map((entry) => entry.trim())
+                    .filter(Boolean)
+                    .slice(0, 6),
+                  minPriceCents: null,
+                  maxPriceCents: selectedMaxPrice > 0 ? selectedMaxPrice * 100 : null,
+                  listingTitle: null,
+                  listingPriceCents: null
+                }}
+                labels={dialogLabels}
+              />
             )}
-            {trackMessage ? <span className="inline-note">{trackMessage}</span> : null}
           </div>
         </div>
       </div>
@@ -368,9 +369,23 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
                   <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
                     {labels.open}
                   </a>
-                  <button className="ghost-button" type="button" onClick={() => trackSimilar(listing)}>
-                    {allowTracking ? labels.trackSimilar : labels.trackSignIn}
-                  </button>
+                  <TrackSimilarButton
+                    allowTracking={allowTracking}
+                    trackHref={trackHref}
+                    buttonLabel={labels.trackSimilar}
+                    preset={{
+                      label: listing.title,
+                      query: searchContext || listing.title,
+                      searchUrl: market.searchUrl,
+                      categoryTitle: activeCategory?.title ?? listing.category ?? null,
+                      includeKeywords: listing.matchedKeywords,
+                      minPriceCents: null,
+                      maxPriceCents: selectedMaxPrice > 0 ? selectedMaxPrice * 100 : listing.priceCents,
+                      listingTitle: listing.title,
+                      listingPriceCents: listing.priceCents
+                    }}
+                    labels={dialogLabels}
+                  />
                 </div>
               </div>
             </article>

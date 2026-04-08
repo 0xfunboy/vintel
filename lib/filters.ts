@@ -45,14 +45,20 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
     return { matches: false, score: 0, matchedKeywords: [], notes: ["Seller outside allowlist"] };
   }
 
-  if (categories.length > 0 && (!category || !categories.includes(category))) {
+  if (categories.length > 0 && !trackedSearchMatch && (!category || !categories.includes(category))) {
     return { matches: false, score: 0, matchedKeywords: [], notes: ["Category outside filter"] };
   }
 
   const matchedKeywords = includes.filter((keyword) => haystack.includes(keyword));
   const requiresAllKeywords = user.filters.keywordMode === "and";
   const keywordMatched =
-    includes.length === 0 ? trackedSearchMatch || trackedSearches.length === 0 : requiresAllKeywords ? matchedKeywords.length === includes.length : matchedKeywords.length > 0;
+    trackedSearchMatch
+      ? true
+      : includes.length === 0
+        ? trackedSearches.length === 0
+        : requiresAllKeywords
+          ? matchedKeywords.length === includes.length
+          : matchedKeywords.length > 0;
 
   if (!keywordMatched) {
     return { matches: false, score: 0, matchedKeywords: [], notes: ["No keyword match"] };

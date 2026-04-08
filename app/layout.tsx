@@ -58,6 +58,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               </div>
 
               <div className="toolbar">
+                {session?.user?.email ? (
+                  <div className="session-pill" title={session.user.email}>
+                    <span className="session-dot" />
+                    <span>
+                      <strong>{session.user.name ?? session.user.email}</strong>
+                      <small>{t.signedInAs}</small>
+                    </span>
+                  </div>
+                ) : null}
                 <LocaleSwitcher initialLocale={locale} label={t.language} />
                 <ThemeToggle
                   initialTheme={theme}
