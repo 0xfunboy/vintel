@@ -96,6 +96,7 @@ type SearchVintedCatalogInput = {
   query?: string;
   searchUrl?: string;
   categoryPath?: string | null;
+  priceTo?: number | null;
   limit?: number;
 };
 
@@ -240,14 +241,24 @@ function toAbsoluteCatalogUrl(pathOrUrl: string) {
   return url;
 }
 
-export function buildVintedCatalogUrl(input: { query?: string; categoryPath?: string | null }) {
+export function buildVintedCatalogUrl(input: { query?: string; categoryPath?: string | null; priceTo?: number | null }) {
   const url = toAbsoluteCatalogUrl(normalizeCategoryPath(input.categoryPath) ?? "/catalog");
   const query = normalizeSearchText(input.query ?? "");
+  const priceTo =
+    typeof input.priceTo === "number" && Number.isFinite(input.priceTo) && input.priceTo > 0
+      ? Math.round(input.priceTo)
+      : null;
 
   if (query) {
     url.searchParams.set("search_text", query);
   } else {
     url.searchParams.delete("search_text");
+  }
+
+  if (priceTo !== null) {
+    url.searchParams.set("price_to", String(priceTo));
+  } else {
+    url.searchParams.delete("price_to");
   }
 
   return url.toString();
@@ -340,8 +351,9 @@ export function extractSniperKeywords(values: Array<string | null | undefined>) 
 export async function searchVintedCatalog(input: SearchVintedCatalogInput = {}): Promise<VintedCatalogSearchResult> {
   const searchUrl = normalizeTrackedUrl(
     input.searchUrl
-      ? normalizeVintedCatalogUrl(input.searchUrl) ?? buildVintedCatalogUrl({ query: input.query, categoryPath: input.categoryPath })
-      : buildVintedCatalogUrl({ query: input.query, categoryPath: input.categoryPath })
+      ? normalizeVintedCatalogUrl(input.searchUrl) ??
+        buildVintedCatalogUrl({ query: input.query, categoryPath: input.categoryPath, priceTo: input.priceTo })
+      : buildVintedCatalogUrl({ query: input.query, categoryPath: input.categoryPath, priceTo: input.priceTo })
   );
 
   const url = new URL(searchUrl);

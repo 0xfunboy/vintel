@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
 
 import { formatCurrency } from "@/lib/filters";
@@ -38,25 +39,22 @@ type PublicMarketBoardProps = {
     trackSimilar: string;
     trackSignIn: string;
     trackSaved: string;
+    anyBudget: string;
+    upToPrice: string;
+    manualBudget: string;
   };
 };
 
-type PriceLane = "all" | "10" | "100" | "1000";
+const PRESET_PRICE_CAPS = [0, 10, 100, 500, 1000] as const;
+const MAX_PRICE_CAP = 1000;
 
-function matchesLane(priceCents: number, lane: PriceLane) {
-  if (lane === "10") {
-    return priceCents <= 1000;
+function getInitialPriceCap(searchUrl: string) {
+  try {
+    const value = Number(new URL(searchUrl).searchParams.get("price_to") ?? "0");
+    return Number.isFinite(value) && value > 0 ? Math.min(MAX_PRICE_CAP, Math.round(value)) : 0;
+  } catch {
+    return 0;
   }
-
-  if (lane === "100") {
-    return priceCents <= 10000;
-  }
-
-  if (lane === "1000") {
-    return priceCents <= 100000;
-  }
-
-  return true;
 }
 
 function formatDate(value: string, locale: Locale) {
@@ -74,16 +72,29 @@ function getCategoryLabel(listing: ListingRecord, activeCategory: VintedFacetCat
   return listing.category ?? activeCategory?.title ?? null;
 }
 
+function formatBudgetLabel(value: number, locale: Locale, labels: PublicMarketBoardProps["labels"]) {
+  if (value <= 0) {
+    return labels.anyBudget;
+  }
+
+  const amount = `$${value.toLocaleString(locale === "it" ? "it-IT" : "en-US")}`;
+  return labels.upToPrice.replace("{price}", amount);
+}
+
 export function PublicMarketBoard({ locale, initialState, allowTracking, trackHref, labels }: PublicMarketBoardProps) {
   const [query, setQuery] = useState(initialState.query);
   const [market, setMarket] = useState<MarketState>(initialState);
   const [selectedCategoryPath, setSelectedCategoryPath] = useState<string>("all");
-  const [selectedLane, setSelectedLane] = useState<PriceLane>("all");
+  const [selectedMaxPrice, setSelectedMaxPrice] = useState<number>(() => getInitialPriceCap(initialState.searchUrl));
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trackMessage, setTrackMessage] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
-  const activeCategory = selectedCategoryPath === "all" ? null : market.categories.find((entry) => entry.path === selectedCategoryPath) ?? null;
+  const deferredMaxPrice = useDeferredValue(selectedMaxPrice);
+  const activeCategory =
+    selectedCategoryPath === "all" ? null : market.categories.find((entry) => entry.path === selectedCategoryPath) ?? null;
+  const activeBudgetLabel = formatBudgetLabel(selectedMaxPrice, locale, labels);
+  const sliderProgress = `${Math.round((selectedMaxPrice / MAX_PRICE_CAP) * 100)}%`;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -98,6 +109,9 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
         }
         if (selectedCategoryPath !== "all") {
           params.set("categoryPath", selectedCategoryPath);
+        }
+        if (deferredMaxPrice > 0) {
+          params.set("priceTo", String(deferredMaxPrice));
         }
 
         const response = await fetch(`/api/search/live?${params.toString()}`, {
@@ -134,14 +148,14 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [deferredQuery, labels.liveFailed, selectedCategoryPath]);
+  }, [deferredMaxPrice, deferredQuery, labels.liveFailed, selectedCategoryPath]);
 
   const filtered = market.listings.filter((listing) => {
     const haystack = `${listing.title} ${listing.description ?? ""} ${listing.category ?? ""}`.toLowerCase();
     const queryMatch = deferredQuery.trim() === "" ? true : haystack.includes(deferredQuery.toLowerCase().trim());
-    const laneMatch = matchesLane(listing.priceCents, selectedLane);
+    const priceMatch = selectedMaxPrice === 0 ? true : listing.priceCents <= selectedMaxPrice * 100;
 
-    return queryMatch && laneMatch;
+    return queryMatch && priceMatch;
   });
 
   const preview = filtered.slice(0, 12);
@@ -166,7 +180,8 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
           searchUrl: market.searchUrl,
           categoryTitle: activeCategory?.title ?? listing?.category ?? null,
           listingTitle: listing?.title ?? null,
-          listingPriceCents: listing?.priceCents ?? null
+          listingPriceCents: listing?.priceCents ?? null,
+          maxPriceCents: selectedMaxPrice > 0 ? selectedMaxPrice * 100 : null
         })
       });
 
@@ -191,23 +206,21 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
   }
 
   return (
-    <section className="content-panel market-panel" id="market">
-      <div className="market-head">
+    <section className="content-panel market-panel market-panel-refined" id="market">
+      <div className="market-panel-header">
         <div>
-          <div className="section-kicker">{labels.title}</div>
-          <h2 className="section-title compact-title">{labels.title}</h2>
+          <p className="section-label">{labels.title}</p>
           <p className="section-copy">{labels.body}</p>
         </div>
 
-        <div className="feature-pills">
-          <span className="feature-pill">{labels.keywordMode}</span>
-          <span className="feature-pill">{labels.categoryMode}</span>
-          <span className="feature-pill">{labels.priceMode}</span>
+        <div className="market-status-copy">
+          <span className={searching ? "badge" : "badge success"}>{searching ? labels.liveSearching : labels.liveReady}</span>
+          <span>{labels.liveResults.replace("{count}", String(market.totalEntries))}</span>
         </div>
       </div>
 
-      <div className="market-toolbar">
-        <label className="search-shell">
+      <div className="track-surface">
+        <label className="search-shell search-shell-wide">
           <span className="search-icon">⌕</span>
           <input
             className="search-input"
@@ -217,58 +230,86 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
           />
         </label>
 
-        <div className="chip-strip">
-          <span className="chip-title">{labels.categoryMode}</span>
-          <button
-            type="button"
-            className={selectedCategoryPath === "all" ? "filter-chip is-active" : "filter-chip"}
-            onClick={() => setSelectedCategoryPath("all")}
-          >
-            {labels.all}
-          </button>
-          {market.categories
-            .filter((category) => category.itemCount > 0)
-            .slice(0, 8)
-            .map((category) => (
+        <div className="track-grid">
+          <div className="track-field">
+            <span className="control-label">{labels.categoryMode}</span>
+            <div className="chip-strip">
               <button
-                key={category.path}
                 type="button"
-                className={selectedCategoryPath === category.path ? "filter-chip is-active" : "filter-chip"}
-                onClick={() => setSelectedCategoryPath(category.path)}
+                className={selectedCategoryPath === "all" ? "filter-chip is-active" : "filter-chip"}
+                onClick={() => setSelectedCategoryPath("all")}
               >
-                {category.title}
+                {labels.all}
               </button>
-            ))}
+              {market.categories
+                .filter((category) => category.itemCount > 0)
+                .slice(0, 10)
+                .map((category) => (
+                  <button
+                    key={category.path}
+                    type="button"
+                    className={selectedCategoryPath === category.path ? "filter-chip is-active" : "filter-chip"}
+                    onClick={() => setSelectedCategoryPath(category.path)}
+                  >
+                    {category.title}
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          <div className="track-field track-field-wide">
+            <div className="budget-header">
+              <span className="control-label">{labels.priceMode}</span>
+              <strong>{activeBudgetLabel}</strong>
+            </div>
+
+            <div className="budget-presets">
+              {PRESET_PRICE_CAPS.map((cap) => (
+                <button
+                  key={cap}
+                  type="button"
+                  className={selectedMaxPrice === cap ? "filter-chip is-active" : "filter-chip"}
+                  onClick={() => setSelectedMaxPrice(cap)}
+                >
+                  {cap === 0 ? labels.all : `< $${cap}`}
+                </button>
+              ))}
+            </div>
+
+            <div className="budget-slider-block">
+              <input
+                className="budget-slider"
+                type="range"
+                min="0"
+                max={String(MAX_PRICE_CAP)}
+                step="10"
+                value={selectedMaxPrice}
+                onChange={(event) => setSelectedMaxPrice(Number(event.target.value))}
+                style={{ "--budget-progress": sliderProgress } as CSSProperties}
+              />
+              <div className="slider-caption-row">
+                <span className="slider-caption">{labels.manualBudget}</span>
+                <span className="slider-caption">{activeBudgetLabel}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="chip-strip">
-          <span className="chip-title">{labels.priceMode}</span>
-          {(["all", "10", "100", "1000"] as const).map((lane) => (
-            <button
-              key={lane}
-              type="button"
-              className={selectedLane === lane ? "filter-chip is-active" : "filter-chip"}
-              onClick={() => setSelectedLane(lane)}
-            >
-              {lane === "all" ? labels.all : `< $${lane}`}
-            </button>
-          ))}
-        </div>
-      </div>
+        <div className="market-status-row">
+          <div className="feature-pills">
+            <span className="feature-pill">{labels.keywordMode}</span>
+            <span className="feature-pill">{labels.categoryMode}</span>
+            <span className="feature-pill">{labels.priceMode}</span>
+          </div>
 
-      <div className="market-status-row">
-        <div className="market-status-copy">
-          <span className={searching ? "badge" : "badge success"}>{searching ? labels.liveSearching : labels.liveReady}</span>
-          <span>{labels.liveResults.replace("{count}", String(market.totalEntries))}</span>
-        </div>
-
-        <div className="market-utility-row">
-          {(searchContext || activeCategory) && (
-            <button className="ghost-button" type="button" onClick={() => trackSimilar()}>
-              {allowTracking ? labels.trackSearch : labels.trackSignIn}
-            </button>
-          )}
-          {trackMessage ? <span className="inline-note">{trackMessage}</span> : null}
+          <div className="market-utility-row">
+            {(searchContext || activeCategory) && (
+              <button className="ghost-button" type="button" onClick={() => trackSimilar()}>
+                {allowTracking ? labels.trackSearch : labels.trackSignIn}
+              </button>
+            )}
+            {trackMessage ? <span className="inline-note">{trackMessage}</span> : null}
+          </div>
         </div>
       </div>
 

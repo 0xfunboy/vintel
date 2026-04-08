@@ -19,6 +19,7 @@ Production-oriented Next.js app for a Vinted sniper portal on `https://app.eeess
 Copy `.env.example` to `.env.local` and set:
 
 - `APP_URL`
+- `AUTH_URL`
 - `PORT`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`

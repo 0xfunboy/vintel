@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { HeroGlitchTitle } from "@/components/hero-glitch-title";
 import { PublicMarketBoard } from "@/components/public-market-board";
 import { readListings, readUsers } from "@/lib/db";
 import { formatCurrency } from "@/lib/filters";
@@ -133,6 +134,7 @@ export default async function HomePage() {
       if (!key) {
         continue;
       }
+
       keywordCounts.set(key, (keywordCounts.get(key) ?? 0) + 1);
     }
   }
@@ -143,6 +145,7 @@ export default async function HomePage() {
       if (!key) {
         continue;
       }
+
       keywordCounts.set(key, (keywordCounts.get(key) ?? 0) + 1);
     }
   }
@@ -154,6 +157,7 @@ export default async function HomePage() {
         if (!key) {
           continue;
         }
+
         keywordCounts.set(key, (keywordCounts.get(key) ?? 0) + 1);
       }
     }
@@ -173,14 +177,15 @@ export default async function HomePage() {
 
   const botUrl = bot?.username ? `https://t.me/${bot.username}` : null;
   const personalizeHref = session?.user?.email ? "/dashboard" : "/signin";
+  const liveHitCount = liveSearch?.totalEntries ?? marketListings.length;
 
   return (
-    <main className="market-home">
-      <section className="hero-surface">
-        <div className="hero-copy-stack">
-          <div className="section-kicker">Vintel</div>
-          <h1 className="hero-title">{t.heroTitle}</h1>
-          <p className="hero-copy">{t.heroBody}</p>
+    <main className="market-home market-home-refined">
+      <section className="hero-frame">
+        <div className="hero-main">
+          <p className="section-label">{locale === "it" ? "Portale sniper Vinted" : "Vinted sniper portal"}</p>
+          <HeroGlitchTitle text={t.heroTitle} />
+          <p className="hero-copy hero-copy-wide">{t.heroBody}</p>
 
           <div className="feature-pills">
             <span className="feature-pill">{t.homeKeywordMode}</span>
@@ -190,7 +195,7 @@ export default async function HomePage() {
 
           <div className="hero-actions">
             <a className="primary-button" href="#market">
-              {t.homeBrowseGuest}
+              {t.productFeed}
             </a>
             {botUrl ? (
               <a className="ghost-button" href={botUrl} target="_blank" rel="noreferrer">
@@ -201,11 +206,26 @@ export default async function HomePage() {
               {session?.user?.email ? t.navDashboard : t.homeSyncBot}
             </a>
           </div>
+
+          <div className="hero-stat-strip">
+            <div className="hero-stat">
+              <span>{t.homeLiveReady}</span>
+              <strong>{liveHitCount}</strong>
+            </div>
+            <div className="hero-stat">
+              <span>{t.homeCategories}</span>
+              <strong>{hotCategories.length}</strong>
+            </div>
+            <div className="hero-stat">
+              <span>{t.homeTelegramTitle}</span>
+              <strong>{bot?.username ? `@${bot.username}` : "offline"}</strong>
+            </div>
+          </div>
         </div>
 
-        <div className="hero-side-stack">
-          <article className="spotlight-card">
-            <div className="preview-label">{t.homeLatest}</div>
+        <aside className="hero-rail">
+          <article className="spotlight-card hero-spotlight">
+            <p className="section-label">{t.homeLatest}</p>
 
             {spotlight ? (
               <>
@@ -248,166 +268,41 @@ export default async function HomePage() {
             )}
           </article>
 
-          <article className="preview-panel" id="bot">
-            <div className="preview-label">{t.homeTelegramTitle}</div>
-            <h2 className="compact-heading">@{bot?.username ?? "VintedSnbot"}</h2>
-            <p className="section-copy">{t.homeTelegramBody}</p>
-            <div className="hero-actions compact-actions">
-              {botUrl ? (
-                <a className="primary-button" href={botUrl} target="_blank" rel="noreferrer">
-                  {t.homeOpenBot}
+          <div className="hero-utility-grid">
+            <article className="preview-panel hero-utility-panel" id="bot">
+              <p className="section-label">{t.homeTelegramTitle}</p>
+              <div className="hero-utility-copy">
+                <strong>@{bot?.username ?? "vintedLbot"}</strong>
+                <p>{t.homeTelegramBody}</p>
+              </div>
+              <div className="hero-actions compact-actions">
+                {botUrl ? (
+                  <a className="primary-button" href={botUrl} target="_blank" rel="noreferrer">
+                    {t.homeOpenBot}
+                  </a>
+                ) : null}
+                <a className="ghost-button" href={personalizeHref}>
+                  {session?.user?.email ? t.navDashboard : t.heroCta}
                 </a>
-              ) : null}
-              <a className="ghost-button" href={personalizeHref}>
-                {session?.user?.email ? t.navDashboard : t.heroCta}
-              </a>
-            </div>
-          </article>
-        </div>
-      </section>
+              </div>
+            </article>
 
-      <section className="market-snapshot">
-        <article className="content-panel snapshot-panel" id="trending">
-          <div className="section-kicker">{t.homeLatestSniped}</div>
-          <h2 className="section-title compact-title">{t.homeLatestSniped}</h2>
-          <p className="section-copy">{t.homeLatestSnipedBody}</p>
-
-          {latestSniped.length === 0 ? (
-            <span className="empty-inline">{t.homeNoListings}</span>
-          ) : (
-            <div className="rank-list">
-              {latestSniped.map((listing, index) => (
-                <a className="rank-row" key={listing.id} href={listing.url} target="_blank" rel="noreferrer">
-                  <span className="rank-index">{index + 1}</span>
-                  <span className="rank-copy">
-                    <strong>{listing.title}</strong>
-                    <span>{listing.category ?? listing.sellerName}</span>
-                  </span>
-                  <span className="rank-side">
-                    <strong>{formatCurrency(listing.priceCents, listing.currency)}</strong>
-                    <span>{formatDate(listing.postedAt, locale)}</span>
-                  </span>
-                </a>
-              ))}
-            </div>
-          )}
-        </article>
-
-        <article className="content-panel snapshot-panel">
-          <div className="section-kicker">{t.homeMostSniped}</div>
-          <h2 className="section-title compact-title">{t.homeMostSniped}</h2>
-          <p className="section-copy">{t.homeMostSnipedBody}</p>
-
-          {topProductTargets.length === 0 ? (
-            <span className="empty-inline">{t.homeNoListings}</span>
-          ) : (
-            <div className="rank-list">
-              {topProductTargets.map((entry, index) => (
-                <div className="rank-row" key={entry.label}>
-                  <span className="rank-index">{index + 1}</span>
-                  <span className="rank-copy">
-                    <strong>{entry.label}</strong>
-                    <span>{t.homeTrending}</span>
-                  </span>
-                  <span className="rank-side">
-                    <strong>{entry.count}</strong>
-                    <span>{t.homeHits}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-
-        <article className="content-panel snapshot-panel">
-          <div className="section-kicker">{t.homeMostSnipedCategories}</div>
-          <h2 className="section-title compact-title">{t.homeMostSnipedCategories}</h2>
-          <p className="section-copy">{t.homeMostSnipedCategoriesBody}</p>
-
-          {topCategories.length === 0 ? (
-            <span className="empty-inline">{t.homeNoListings}</span>
-          ) : (
-            <div className="rank-list">
-              {topCategories.map((entry, index) => (
-                <div className="rank-row" key={entry.category}>
-                  <span className="rank-index">{index + 1}</span>
-                  <span className="rank-copy">
-                    <strong>{entry.category}</strong>
-                    <span>{t.homeCategories}</span>
-                  </span>
-                  <span className="rank-side">
-                    <strong>{entry.count}</strong>
-                    <span>{t.homeHits}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-      </section>
-
-      <section className="content-panel compact-cta-panel">
-        <div>
-          <div className="section-kicker">{t.homeGuestTitle}</div>
-          <h2 className="section-title compact-title">{t.homeGuestTitle}</h2>
-          <p className="section-copy">{t.homeGuestBody}</p>
-        </div>
-
-        <div className="snapshot-actions">
-          <a className="primary-button" href={personalizeHref}>
-            {session?.user?.email ? t.navDashboard : t.heroCta}
-          </a>
-          {botUrl ? (
-            <a className="ghost-button" href={botUrl} target="_blank" rel="noreferrer">
-              {t.homeOpenBot}
-            </a>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="content-panel chip-section">
-        <div className="panel-head">
-          <div>
-            <div className="section-kicker">{t.homeTrending}</div>
-            <h2 className="section-title compact-title">{t.homeTrending}</h2>
-            <p className="section-copy">{t.homeTrendingBody}</p>
+            <article className="preview-panel hero-utility-panel">
+              <p className="section-label">{t.homeTrending}</p>
+              <div className="trend-cloud">
+                {trending.length === 0 ? (
+                  <span className="empty-inline">{t.homeNoListings}</span>
+                ) : (
+                  trending.slice(0, 5).map((keyword) => (
+                    <span className="trend-chip" key={keyword}>
+                      {keyword}
+                    </span>
+                  ))
+                )}
+              </div>
+            </article>
           </div>
-        </div>
-
-        <div className="trend-cloud">
-          {trending.length === 0 ? (
-            <span className="empty-inline">{t.homeNoListings}</span>
-          ) : (
-            trending.map((keyword) => (
-              <span className="trend-chip" key={keyword}>
-                {keyword}
-              </span>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="content-panel chip-section">
-        <div className="panel-head">
-          <div>
-            <div className="section-kicker">{t.homeCategories}</div>
-            <h2 className="section-title compact-title">{t.homeCategories}</h2>
-            <p className="section-copy">{t.homeCategoriesBody}</p>
-          </div>
-        </div>
-
-        <div className="category-stack">
-          {hotCategories.length === 0 ? (
-            <span className="empty-inline">{t.homeNoListings}</span>
-          ) : (
-            hotCategories.map(({ category, count }) => (
-              <span className="category-pill" key={category}>
-                <strong>{category}</strong>
-                <span>{count}</span>
-              </span>
-            ))
-          )}
-        </div>
+        </aside>
       </section>
 
       <PublicMarketBoard
@@ -439,9 +334,129 @@ export default async function HomePage() {
           trackSearch: t.homeTrackSearch,
           trackSimilar: t.homeTrackSimilar,
           trackSignIn: t.homeTrackSignIn,
-          trackSaved: t.homeTrackSaved
+          trackSaved: t.homeTrackSaved,
+          anyBudget: t.homeBudgetAny,
+          upToPrice: t.homeBudgetUpTo,
+          manualBudget: t.homeBudgetManual
         }}
       />
+
+      <section className="insight-ribbon" id="trending">
+        <article className="insight-column">
+          <p className="section-label">{t.homeLatestSniped}</p>
+          <p className="section-copy">{t.homeLatestSnipedBody}</p>
+
+          {latestSniped.length === 0 ? (
+            <span className="empty-inline">{t.homeNoListings}</span>
+          ) : (
+            <div className="rank-list">
+              {latestSniped.map((listing, index) => (
+                <a className="rank-row" key={listing.id} href={listing.url} target="_blank" rel="noreferrer">
+                  <span className="rank-index">{index + 1}</span>
+                  <span className="rank-copy">
+                    <strong>{listing.title}</strong>
+                    <span>{listing.category ?? listing.sellerName}</span>
+                  </span>
+                  <span className="rank-side">
+                    <strong>{formatCurrency(listing.priceCents, listing.currency)}</strong>
+                    <span>{formatDate(listing.postedAt, locale)}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="insight-column">
+          <p className="section-label">{t.homeMostSniped}</p>
+          <p className="section-copy">{t.homeMostSnipedBody}</p>
+
+          {topProductTargets.length === 0 ? (
+            <span className="empty-inline">{t.homeNoListings}</span>
+          ) : (
+            <div className="rank-list">
+              {topProductTargets.map((entry, index) => (
+                <div className="rank-row" key={entry.label}>
+                  <span className="rank-index">{index + 1}</span>
+                  <span className="rank-copy">
+                    <strong>{entry.label}</strong>
+                    <span>{t.homeTrending}</span>
+                  </span>
+                  <span className="rank-side">
+                    <strong>{entry.count}</strong>
+                    <span>{t.homeHits}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="insight-column">
+          <p className="section-label">{t.homeMostSnipedCategories}</p>
+          <p className="section-copy">{t.homeMostSnipedCategoriesBody}</p>
+
+          {topCategories.length === 0 ? (
+            <span className="empty-inline">{t.homeNoListings}</span>
+          ) : (
+            <div className="rank-list">
+              {topCategories.map((entry, index) => (
+                <div className="rank-row" key={entry.category}>
+                  <span className="rank-index">{index + 1}</span>
+                  <span className="rank-copy">
+                    <strong>{entry.category}</strong>
+                    <span>{t.homeCategories}</span>
+                  </span>
+                  <span className="rank-side">
+                    <strong>{entry.count}</strong>
+                    <span>{t.homeHits}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="content-panel pulse-band">
+        <div className="pulse-lead">
+          <p className="section-label">{t.homePulse}</p>
+          <p className="section-copy">{t.homePulseBody}</p>
+        </div>
+
+        <div className="pulse-groups">
+          <div className="pulse-group">
+            <span className="pulse-heading">{t.homeTrending}</span>
+            <div className="trend-cloud">
+              {trending.length === 0 ? (
+                <span className="empty-inline">{t.homeNoListings}</span>
+              ) : (
+                trending.map((keyword) => (
+                  <span className="trend-chip" key={keyword}>
+                    {keyword}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="pulse-group">
+            <span className="pulse-heading">{t.homeCategories}</span>
+            <div className="category-stack">
+              {hotCategories.length === 0 ? (
+                <span className="empty-inline">{t.homeNoListings}</span>
+              ) : (
+                hotCategories.map(({ category, count }) => (
+                  <span className="category-pill" key={category}>
+                    <strong>{category}</strong>
+                    <span>{count}</span>
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="lane-grid" id="fresh">
         {renderLane(t.homeUnder10, under10, t.homeNoListings, locale)}
@@ -450,10 +465,9 @@ export default async function HomePage() {
       </section>
 
       <section className="content-panel latest-panel">
-        <div className="panel-head">
+        <div className="latest-panel-head">
           <div>
-            <div className="section-kicker">{t.homeLatest}</div>
-            <h2 className="section-title compact-title">{t.homeLatest}</h2>
+            <p className="section-label">{t.homeLatest}</p>
             <p className="section-copy">{t.homeLatestBody}</p>
           </div>
         </div>

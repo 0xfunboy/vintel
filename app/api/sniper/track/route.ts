@@ -10,7 +10,8 @@ const payloadSchema = z.object({
   searchUrl: z.string().url().optional().nullable(),
   categoryTitle: z.string().optional().nullable(),
   listingTitle: z.string().optional().nullable(),
-  listingPriceCents: z.number().int().nonnegative().optional().nullable()
+  listingPriceCents: z.number().int().nonnegative().optional().nullable(),
+  maxPriceCents: z.number().int().nonnegative().optional().nullable()
 });
 
 export async function POST(request: NextRequest) {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       includeKeywords: [...new Set([...current.filters.includeKeywords, ...keywords])],
       searchUrls: normalizedSearchUrl ? [...new Set([normalizedSearchUrl, ...current.filters.searchUrls])] : current.filters.searchUrls,
       minPriceCents: current.filters.minPriceCents ?? inferredBand.minPriceCents,
-      maxPriceCents: current.filters.maxPriceCents ?? inferredBand.maxPriceCents
+      maxPriceCents: current.filters.maxPriceCents ?? parsed.data.maxPriceCents ?? inferredBand.maxPriceCents
     }
   }));
 
