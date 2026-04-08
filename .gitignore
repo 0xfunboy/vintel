@@ -1,0 +1,13 @@
+.next/
+node_modules/
+dist/
+.env
+.env.local
+.env.*
+!.env.example
+data/*.json
+!data/.gitkeep
+*.log
+playwright-live.png
+vintel-home.png
+node_modules
