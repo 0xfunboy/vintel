@@ -15,6 +15,10 @@ type MarketState = {
   categories: VintedFacetCategory[];
   totalEntries: number;
   generatedAt: string;
+  fallbackUsed?: boolean;
+  fallbackQueries?: string[];
+  liveBlocked?: boolean;
+  statusMessage?: string;
 };
 
 type PublicMarketBoardProps = {
@@ -55,6 +59,10 @@ type PublicMarketBoardProps = {
     dialogSubmit: string;
     dialogCancel: string;
     dialogTelegramHint: string;
+    fallbackHint: string;
+    fallbackLabel: string;
+    blockedLabel: string;
+    blockedHint: string;
   };
 };
 
@@ -92,6 +100,19 @@ function formatBudgetLabel(value: number, locale: Locale, labels: PublicMarketBo
 
   const amount = `$${value.toLocaleString(locale === "it" ? "it-IT" : "en-US")}`;
   return labels.upToPrice.replace("{price}", amount);
+}
+
+function getReadableFetchError(message: string, fallback: string) {
+  const normalized = message.trim();
+  if (!normalized || normalized.startsWith("<!DOCTYPE") || normalized.startsWith("<html") || normalized === "error code: 502") {
+    return fallback;
+  }
+
+  if (/unexpected token/i.test(normalized) || /not valid json/i.test(normalized)) {
+    return fallback;
+  }
+
+  return normalized;
 }
 
 export function PublicMarketBoard({ locale, initialState, allowTracking, trackHref, labels }: PublicMarketBoardProps) {
@@ -132,14 +153,20 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
           signal: controller.signal
         });
 
-        const payload = (await response.json()) as {
+        const contentType = response.headers.get("content-type") ?? "";
+        const payload = (contentType.includes("application/json")
+          ? await response.json()
+          : {
+              ok: false,
+              error: getReadableFetchError(await response.text(), labels.liveFailed)
+            }) as {
           ok: boolean;
           error?: string;
           result?: MarketState;
         };
 
         if (!response.ok || !payload.ok || !payload.result) {
-          throw new Error(payload.error ?? labels.liveFailed);
+          throw new Error(getReadableFetchError(payload.error ?? labels.liveFailed, labels.liveFailed));
         }
 
         startTransition(() => {
@@ -164,7 +191,7 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
 
   const filtered = market.listings.filter((listing) => {
     const haystack = `${listing.title} ${listing.description ?? ""} ${listing.category ?? ""}`.toLowerCase();
-    const queryMatch = deferredQuery.trim() === "" ? true : haystack.includes(deferredQuery.toLowerCase().trim());
+    const queryMatch = market.fallbackUsed || deferredQuery.trim() === "" ? true : haystack.includes(deferredQuery.toLowerCase().trim());
     const priceMatch = selectedMaxPrice === 0 ? true : listing.priceCents <= selectedMaxPrice * 100;
 
     return queryMatch && priceMatch;
@@ -188,6 +215,17 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
     saved: labels.trackSaved,
     failed: labels.liveFailed
   };
+  const marketNotice = market.liveBlocked
+    ? {
+        label: labels.blockedLabel,
+        body: labels.blockedHint
+      }
+    : market.fallbackUsed && market.fallbackQueries?.length
+      ? {
+          label: labels.fallbackLabel,
+          body: labels.fallbackHint.replace("{queries}", market.fallbackQueries.join(", "))
+        }
+      : null;
 
   return (
     <section className="content-panel market-panel market-panel-refined" id="market">
@@ -315,82 +353,97 @@ export function PublicMarketBoard({ locale, initialState, allowTracking, trackHr
       </div>
 
       {preview.length === 0 ? (
-        <div className="empty-state">{error ?? labels.noListings}</div>
+        <>
+          {marketNotice ? (
+            <div className="inline-note market-fallback-note">
+              <strong>{marketNotice.label}</strong> {marketNotice.body}
+            </div>
+          ) : null}
+          <div className="empty-state">{error ?? labels.noListings}</div>
+        </>
       ) : (
-        <div className="public-grid">
-          {preview.map((listing) => (
-            <article className="public-card" key={listing.id}>
-              {listing.imageUrl ? (
-                <div className="listing-media-shell">
-                  <img
-                    className="listing-media"
-                    src={listing.imageUrl}
-                    alt={listing.title}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              ) : (
-                <div className="listing-media-fallback">
-                  <span>{getFallbackLabel(listing)}</span>
-                </div>
-              )}
+        <>
+          {marketNotice ? (
+            <div className="inline-note market-fallback-note">
+              <strong>{marketNotice.label}</strong> {marketNotice.body}
+            </div>
+          ) : null}
 
-              <div className="public-card-body">
-                <div className="public-card-top">
-                  <div>
-                    <div className="micro-row">
-                      {getCategoryLabel(listing, activeCategory) ? (
-                        <span className="micro-badge">{getCategoryLabel(listing, activeCategory)}</span>
-                      ) : null}
-                      <span className="micro-badge subdued">{formatDate(listing.postedAt, locale)}</span>
+          <div className="public-grid">
+            {preview.map((listing) => (
+              <article className="public-card" key={listing.id}>
+                {listing.imageUrl ? (
+                  <div className="listing-media-shell">
+                    <img
+                      className="listing-media"
+                      src={listing.imageUrl}
+                      alt={listing.title}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <div className="listing-media-fallback">
+                    <span>{getFallbackLabel(listing)}</span>
+                  </div>
+                )}
+
+                <div className="public-card-body">
+                  <div className="public-card-top">
+                    <div>
+                      <div className="micro-row">
+                        {getCategoryLabel(listing, activeCategory) ? (
+                          <span className="micro-badge">{getCategoryLabel(listing, activeCategory)}</span>
+                        ) : null}
+                        <span className="micro-badge subdued">{formatDate(listing.postedAt, locale)}</span>
+                      </div>
+                      <h3>{listing.title}</h3>
                     </div>
-                    <h3>{listing.title}</h3>
+                    <div className="price-pill">{formatCurrency(listing.priceCents, listing.currency)}</div>
                   </div>
-                  <div className="price-pill">{formatCurrency(listing.priceCents, listing.currency)}</div>
-                </div>
 
-                <div className="meta-grid">
-                  <span>{listing.sellerName}</span>
-                  <span>{listing.source}</span>
-                </div>
-
-                {listing.matchedKeywords.length > 0 ? (
-                  <div className="token-row">
-                    {listing.matchedKeywords.slice(0, 3).map((keyword) => (
-                      <span className="token" key={keyword}>
-                        {keyword}
-                      </span>
-                    ))}
+                  <div className="meta-grid">
+                    <span>{listing.sellerName}</span>
+                    <span>{listing.source}</span>
                   </div>
-                ) : null}
 
-                <div className="listing-actions">
-                  <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
-                    {labels.open}
-                  </a>
-                  <TrackSimilarButton
-                    allowTracking={allowTracking}
-                    trackHref={trackHref}
-                    buttonLabel={labels.trackSimilar}
-                    preset={{
-                      label: listing.title,
-                      query: searchContext || listing.title,
-                      searchUrl: market.searchUrl,
-                      categoryTitle: activeCategory?.title ?? listing.category ?? null,
-                      includeKeywords: listing.matchedKeywords,
-                      minPriceCents: null,
-                      maxPriceCents: selectedMaxPrice > 0 ? selectedMaxPrice * 100 : listing.priceCents,
-                      listingTitle: listing.title,
-                      listingPriceCents: listing.priceCents
-                    }}
-                    labels={dialogLabels}
-                  />
+                  {listing.matchedKeywords.length > 0 ? (
+                    <div className="token-row">
+                      {listing.matchedKeywords.slice(0, 3).map((keyword) => (
+                        <span className="token" key={keyword}>
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="listing-actions">
+                    <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
+                      {labels.open}
+                    </a>
+                    <TrackSimilarButton
+                      allowTracking={allowTracking}
+                      trackHref={trackHref}
+                      buttonLabel={labels.trackSimilar}
+                      preset={{
+                        label: listing.title,
+                        query: searchContext || listing.title,
+                        searchUrl: market.searchUrl,
+                        categoryTitle: activeCategory?.title ?? listing.category ?? null,
+                        includeKeywords: listing.matchedKeywords,
+                        minPriceCents: null,
+                        maxPriceCents: selectedMaxPrice > 0 ? selectedMaxPrice * 100 : listing.priceCents,
+                        listingTitle: listing.title,
+                        listingPriceCents: listing.priceCents
+                      }}
+                      labels={dialogLabels}
+                    />
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+        </>
       )}
     </section>
   );

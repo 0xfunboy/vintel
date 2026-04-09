@@ -89,6 +89,8 @@ export type VintedCatalogSearchResult = {
   categories: VintedFacetCategory[];
   totalEntries: number;
   generatedAt: string;
+  fallbackUsed: boolean;
+  fallbackQueries: string[];
 };
 
 type SearchVintedCatalogInput = {
@@ -109,7 +111,7 @@ function isAllowedVintedHost(hostname: string) {
 }
 
 function decodeEmbeddedJson<T>(value: string) {
-  return JSON.parse(value.replace(/\\"/g, "\"")) as T;
+  return JSON.parse(JSON.parse(`"${value}"`)) as T;
 }
 
 function normalizePriceToCents(amount?: string) {
@@ -123,6 +125,24 @@ function normalizePriceToCents(amount?: string) {
 
 function normalizeSearchText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function uniqueNormalizedQueries(values: string[]) {
+  const seen = new Set<string>();
+  const queries: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeSearchText(value);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    queries.push(normalized);
+  }
+
+  return queries;
 }
 
 function normalizeTrackedUrl(url: string) {
@@ -222,6 +242,87 @@ function extractKeywordsFromText(value: string) {
   }
 
   return tokens.slice(0, 6);
+}
+
+function splitAlphaNumericToken(token: string) {
+  const match = token.match(/^([a-z]+)(\d+[a-z0-9]*)$/i);
+  if (!match) {
+    return null;
+  }
+
+  return `${match[1]} ${match[2]}`;
+}
+
+function joinSeparatedModelTokens(tokens: string[]) {
+  if (tokens.length !== 2) {
+    return null;
+  }
+
+  if (!/^[a-z]{2,6}$/i.test(tokens[0]) || !/^\d{3,5}[a-z0-9]*$/i.test(tokens[1])) {
+    return null;
+  }
+
+  return `${tokens[0]}${tokens[1]}`;
+}
+
+function buildExpandedSearchQueries(query: string) {
+  const normalized = normalizeSearchText(query);
+  if (!normalized) {
+    return [];
+  }
+
+  const originalTokens = normalized.split(/\s+/).filter(Boolean);
+  const lowerTokens = originalTokens.map((token) => token.toLowerCase());
+  const candidates: string[] = [];
+
+  for (const token of originalTokens) {
+    const splitToken = splitAlphaNumericToken(token);
+    if (splitToken) {
+      candidates.push(normalized.replace(token, splitToken));
+    }
+  }
+
+  const joinedModel = joinSeparatedModelTokens(originalTokens);
+  if (joinedModel) {
+    candidates.push(joinedModel);
+  }
+
+  if (lowerTokens.includes("ddr5") || lowerTokens.includes("ddr4")) {
+    const ddrToken = lowerTokens.includes("ddr5") ? "DDR5" : "DDR4";
+    candidates.push(`${ddrToken} RAM`);
+    candidates.push(`RAM ${ddrToken}`);
+    candidates.push(`kit RAM ${ddrToken}`);
+    candidates.push(`${ddrToken} memory`);
+  }
+
+  if (lowerTokens.includes("ram")) {
+    candidates.push(`${normalized} kit`);
+    candidates.push(`${normalized} memory`);
+  }
+
+  if (
+    lowerTokens.includes("gpu") ||
+    lowerTokens.includes("rtx") ||
+    lowerTokens.includes("gtx") ||
+    lowerTokens.includes("radeon") ||
+    lowerTokens.includes("rx") ||
+    lowerTokens.some((token) => /^\d{3,5}$/.test(token))
+  ) {
+    candidates.push(`${normalized} GPU`);
+    candidates.push(`${normalized} scheda video`);
+    candidates.push(`${normalized} graphics card`);
+  }
+
+  if (lowerTokens.includes("ssd") || lowerTokens.includes("nvme")) {
+    candidates.push(`${normalized} NVMe`);
+    candidates.push(`${normalized} M.2`);
+  }
+
+  if (lowerTokens.includes("monitor")) {
+    candidates.push(`${normalized} gaming`);
+  }
+
+  return uniqueNormalizedQueries(candidates).filter((candidate) => candidate.toLowerCase() !== normalized.toLowerCase()).slice(0, 5);
 }
 
 function toAbsoluteCatalogUrl(pathOrUrl: string) {
@@ -348,7 +449,7 @@ export function extractSniperKeywords(values: Array<string | null | undefined>) 
   return extractKeywordsFromText(merged);
 }
 
-export async function searchVintedCatalog(input: SearchVintedCatalogInput = {}): Promise<VintedCatalogSearchResult> {
+async function fetchVintedCatalog(input: SearchVintedCatalogInput = {}): Promise<VintedCatalogSearchResult> {
   const searchUrl = normalizeTrackedUrl(
     input.searchUrl
       ? normalizeVintedCatalogUrl(input.searchUrl) ??
@@ -396,6 +497,116 @@ export async function searchVintedCatalog(input: SearchVintedCatalogInput = {}):
     ingestItems,
     categories,
     totalEntries: rawPagination.total_entries ?? rawItems.length,
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
+    fallbackUsed: false,
+    fallbackQueries: []
+  };
+}
+
+function mergeCategories(collections: VintedFacetCategory[][]) {
+  const byPath = new Map<string, VintedFacetCategory>();
+
+  for (const categories of collections) {
+    for (const category of categories) {
+      const existing = byPath.get(category.path);
+      if (!existing || category.itemCount > existing.itemCount) {
+        byPath.set(category.path, category);
+      }
+    }
+  }
+
+  return [...byPath.values()].sort((left, right) => right.itemCount - left.itemCount);
+}
+
+function mergeListings(collections: ListingRecord[][], limit: number) {
+  const seen = new Set<string>();
+  const merged: ListingRecord[] = [];
+
+  for (const listings of collections) {
+    for (const listing of listings) {
+      const key = `${listing.source}:${listing.sourceListingId}`;
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      merged.push(listing);
+
+      if (merged.length >= limit) {
+        return merged;
+      }
+    }
+  }
+
+  return merged;
+}
+
+export async function searchVintedCatalog(input: SearchVintedCatalogInput = {}): Promise<VintedCatalogSearchResult> {
+  const primary = await fetchVintedCatalog(input);
+  const normalizedQuery = normalizeSearchText(input.query ?? primary.query);
+
+  if (input.searchUrl || input.categoryPath || !normalizedQuery || primary.totalEntries > 0 || primary.listings.length > 0) {
+    return primary;
+  }
+
+  const fallbackQueries = buildExpandedSearchQueries(normalizedQuery);
+  if (fallbackQueries.length === 0) {
+    return primary;
+  }
+
+  const fallbackResults = (
+    await Promise.all(
+      fallbackQueries.map((query) =>
+        fetchVintedCatalog({
+          ...input,
+          query,
+          searchUrl: undefined
+        }).catch(() => null)
+      )
+    )
+  ).filter((entry): entry is VintedCatalogSearchResult => {
+    if (!entry) {
+      return false;
+    }
+
+    return entry.totalEntries > 0 || entry.listings.length > 0;
+  });
+
+  if (fallbackResults.length === 0) {
+    return primary;
+  }
+
+  const limit = Math.max(1, input.limit ?? 24);
+  const mergedListings = mergeListings(fallbackResults.map((entry) => entry.listings), limit);
+  const mergedIngestItems = mergeListings(
+    fallbackResults.map((entry) => entry.ingestItems.map((item) => toPublicListing(item))),
+    limit
+  ).map((listing) => ({
+    source: listing.source,
+    sourceListingId: listing.sourceListingId,
+    searchUrl: listing.sourceSearchUrl,
+    category: listing.category,
+    title: listing.title,
+    description: listing.description,
+    url: listing.url,
+    imageUrl: listing.imageUrl,
+    priceCents: listing.priceCents,
+    currency: listing.currency,
+    sellerName: listing.sellerName,
+    sellerUrl: listing.sellerUrl,
+    location: listing.location,
+    postedAt: listing.postedAt
+  }));
+
+  return {
+    query: normalizedQuery,
+    searchUrl: fallbackResults[0]?.searchUrl ?? primary.searchUrl,
+    listings: mergedListings,
+    ingestItems: mergedIngestItems,
+    categories: mergeCategories(fallbackResults.map((entry) => entry.categories)),
+    totalEntries: fallbackResults.reduce((total, entry) => total + entry.totalEntries, 0),
+    generatedAt: new Date().toISOString(),
+    fallbackUsed: true,
+    fallbackQueries: fallbackResults.map((entry) => entry.query)
   };
 }

@@ -402,7 +402,11 @@ export default async function HomePage() {
           dialogSearchUrl: t.trackDialogSearchUrl,
           dialogSubmit: t.trackDialogSubmit,
           dialogCancel: t.trackDialogCancel,
-          dialogTelegramHint: t.trackDialogTelegramHint
+          dialogTelegramHint: t.trackDialogTelegramHint,
+          fallbackHint: t.homeFallbackHint,
+          fallbackLabel: t.homeFallbackLabel,
+          blockedHint: t.homeBlockedHint,
+          blockedLabel: t.homeBlockedLabel
         }}
       />
 
