@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "poll": "tsx scripts/poll.ts",
+    "poll:loop": "tsx scripts/poll-loop.ts",
     "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {

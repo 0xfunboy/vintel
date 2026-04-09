@@ -25,6 +25,7 @@ Copy `.env.example` to `.env.local` and set:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `INGEST_CRON_SECRET`
+- `POLL_INTERVAL_SECONDS`
 - `AUTH_SECRET`
 - `AUTH_GOOGLE_ID`
 - `AUTH_GOOGLE_SECRET`
@@ -50,6 +51,7 @@ Smoke:
 ```bash
 pnpm smoke
 pnpm poll
+pnpm poll:loop
 ```
 
 ## Production port
@@ -57,6 +59,28 @@ pnpm poll
 `app.eeess.cyou` is pinned to `PORT=43101`.
 
 The current production unit also keeps a local compatibility bridge on `127.0.0.1:3001` so the existing Cloudflare tunnel can keep serving traffic until its system service is reloaded.
+
+## Poller
+
+Tracked-search polling runs from a separate user service and reads `POLL_INTERVAL_SECONDS` from `.env.local`.
+
+Current default:
+
+```bash
+POLL_INTERVAL_SECONDS=60
+```
+
+Manual run:
+
+```bash
+source ~/.nvm/nvm.sh
+nvm use 23.3.0
+corepack pnpm poll:loop
+```
+
+User service template:
+
+[`deploy/systemd/vinted-gpu-watch-poller.service`](/home/funboy/vintel/deploy/systemd/vinted-gpu-watch-poller.service)
 
 ## Safe deploy flow
 

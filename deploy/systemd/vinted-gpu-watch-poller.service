@@ -1,0 +1,16 @@
+[Unit]
+Description=Vintel tracked-search poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/funboy/vintel
+Environment=NODE_ENV=production
+EnvironmentFile=/home/funboy/vintel/.env.local
+ExecStart=/bin/bash -lc 'source ~/.nvm/nvm.sh && nvm use 23.3.0 >/dev/null && exec corepack pnpm exec tsx scripts/poll-loop.ts'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
