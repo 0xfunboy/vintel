@@ -8,6 +8,7 @@ export type TrackedSearchRecord = {
   searchUrl: string;
   categoryTitle: string | null;
   includeKeywords: string[];
+  excludeKeywords: string[];
   minPriceCents: number | null;
   maxPriceCents: number | null;
   createdAt: string;
@@ -27,6 +28,7 @@ export type UserFilters = {
   sellersBlocklist: string[];
   searchUrls: string[];
   trackedSearches: TrackedSearchRecord[];
+  dismissedListingIds: string[];
 };
 
 export type UserRecord = {
@@ -74,6 +76,8 @@ export type AlertRecord = {
   userId: string;
   listingId: string;
   channel: "dashboard" | "telegram";
+  trackedSearchId: string | null;
+  trackedSearchUrl: string | null;
   sentAt: string;
   openedAt: string | null;
   clickedAt: string | null;
@@ -101,6 +105,8 @@ export type MatchResult = {
   score: number;
   matchedKeywords: string[];
   notes: string[];
+  matchedTrackedSearchId: string | null;
+  matchedTrackedSearchUrl: string | null;
 };
 
 export type IngestSummary = {

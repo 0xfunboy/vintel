@@ -1611,6 +1611,17 @@ textarea {
   margin-right: 6px;
 }
 
+.feedback-reason-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feedback-keywords-block {
+  display: grid;
+  gap: 10px;
+}
+
 /* ── Compact Telegram section ────────────────────── */
 .telegram-compact {
   display: grid;

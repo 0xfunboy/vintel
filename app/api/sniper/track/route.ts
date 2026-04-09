@@ -66,6 +66,8 @@ export async function POST(request: NextRequest) {
           searchUrl: normalizedSearchUrl,
           categoryTitle: parsed.data.categoryTitle?.trim() || null,
           includeKeywords: keywords,
+          excludeKeywords:
+            current.filters.trackedSearches.find((entry) => entry.searchUrl === normalizedSearchUrl)?.excludeKeywords ?? [],
           minPriceCents: parsed.data.minPriceCents ?? inferredBand.minPriceCents,
           maxPriceCents: parsed.data.maxPriceCents ?? inferredBand.maxPriceCents,
           createdAt:

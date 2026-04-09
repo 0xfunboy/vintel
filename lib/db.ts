@@ -27,7 +27,8 @@ const defaults: UserFilters = {
   sellersAllowlist: [],
   sellersBlocklist: [],
   searchUrls: [],
-  trackedSearches: []
+  trackedSearches: [],
+  dismissedListingIds: []
 };
 
 function normalizeTrackedSearch(entry: Partial<TrackedSearchRecord> & { searchUrl?: string }) {
@@ -44,6 +45,7 @@ function normalizeTrackedSearch(entry: Partial<TrackedSearchRecord> & { searchUr
     searchUrl: entry.searchUrl,
     categoryTitle: entry.categoryTitle ?? null,
     includeKeywords: Array.isArray(entry.includeKeywords) ? entry.includeKeywords.filter(Boolean) : [],
+    excludeKeywords: Array.isArray(entry.excludeKeywords) ? entry.excludeKeywords.filter(Boolean) : [],
     minPriceCents: typeof entry.minPriceCents === "number" ? entry.minPriceCents : null,
     maxPriceCents: typeof entry.maxPriceCents === "number" ? entry.maxPriceCents : null,
     createdAt: entry.createdAt ?? now,
@@ -70,7 +72,8 @@ function normalizeFilters(filters?: Partial<UserFilters> | null): UserFilters {
     sellersAllowlist: Array.isArray(filters?.sellersAllowlist) ? filters.sellersAllowlist.filter(Boolean) : [],
     sellersBlocklist: Array.isArray(filters?.sellersBlocklist) ? filters.sellersBlocklist.filter(Boolean) : [],
     searchUrls: [...new Set([...searchUrls, ...trackedUrls])],
-    trackedSearches
+    trackedSearches,
+    dismissedListingIds: Array.isArray(filters?.dismissedListingIds) ? filters.dismissedListingIds.filter(Boolean) : []
   };
 }
 
@@ -192,6 +195,11 @@ export async function getUserByEmail(email: string) {
   return users.find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null;
 }
 
+export async function getUserById(userId: string) {
+  const users = await readUsers();
+  return users.find((user) => user.id === userId) ?? null;
+}
+
 export async function getUserByTelegramLinkToken(token: string) {
   const users = await readUsers();
   return users.find((user) => user.telegramLinkToken === token) ?? null;
@@ -200,6 +208,11 @@ export async function getUserByTelegramLinkToken(token: string) {
 export async function getUserByTelegramChatId(chatId: string) {
   const users = await readUsers();
   return users.find((user) => user.telegramChatId === chatId) ?? null;
+}
+
+export async function getListingById(listingId: string) {
+  const listings = await readListings();
+  return listings.find((listing) => listing.id === listingId) ?? null;
 }
 
 export async function updateUserById(userId: string, updater: (user: UserRecord) => UserRecord) {

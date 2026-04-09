@@ -12,6 +12,10 @@ function normalizeSearchRef(value: string) {
   return value.toLowerCase().trim().replace(/\/+$/, "");
 }
 
+function unique(values: string[]) {
+  return [...new Set(values)];
+}
+
 export function formatCurrency(priceCents: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -30,47 +34,65 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
   const excludes = normalizeList(user.filters.excludeKeywords);
   const allowlist = normalizeList(user.filters.sellersAllowlist);
   const blocklist = normalizeList(user.filters.sellersBlocklist);
+  const candidateSearchUrl = candidate.searchUrl ?? null;
+  const normalizedCandidateSearchUrl = candidateSearchUrl ? normalizeSearchRef(candidateSearchUrl) : null;
+  const matchedTrackedSearch = normalizedCandidateSearchUrl
+    ? user.filters.trackedSearches.find((entry) => normalizeSearchRef(entry.searchUrl) === normalizedCandidateSearchUrl)
+    : null;
   const trackedSearches = user.filters.searchUrls.map(normalizeSearchRef);
-  const trackedSearchMatch = candidate.searchUrl ? trackedSearches.includes(normalizeSearchRef(candidate.searchUrl)) : false;
+  const trackedSearchMatch =
+    Boolean(matchedTrackedSearch) || (normalizedCandidateSearchUrl ? trackedSearches.includes(normalizedCandidateSearchUrl) : false);
+  const trackedCategories = matchedTrackedSearch?.categoryTitle ? normalizeList([matchedTrackedSearch.categoryTitle]) : [];
+  const trackedIncludes = normalizeList(matchedTrackedSearch?.includeKeywords ?? []);
+  const trackedExcludes = normalizeList(matchedTrackedSearch?.excludeKeywords ?? []);
+  const effectiveCategories = trackedCategories.length > 0 ? trackedCategories : categories;
+  const effectiveMinPrice = matchedTrackedSearch?.minPriceCents ?? user.filters.minPriceCents;
+  const effectiveMaxPrice = matchedTrackedSearch?.maxPriceCents ?? user.filters.maxPriceCents;
 
   if (!user.alertsEnabled) {
-    return { matches: false, score: 0, matchedKeywords: [], notes: ["Alerts disabled"] };
+    return { matches: false, score: 0, matchedKeywords: [], notes: ["Alerts disabled"], matchedTrackedSearchId: null, matchedTrackedSearchUrl: null };
   }
 
   if (blocklist.includes(sellerName)) {
-    return { matches: false, score: 0, matchedKeywords: [], notes: ["Blocked seller"] };
+    return { matches: false, score: 0, matchedKeywords: [], notes: ["Blocked seller"], matchedTrackedSearchId: null, matchedTrackedSearchUrl: null };
   }
 
   if (allowlist.length > 0 && !allowlist.includes(sellerName)) {
-    return { matches: false, score: 0, matchedKeywords: [], notes: ["Seller outside allowlist"] };
+    return { matches: false, score: 0, matchedKeywords: [], notes: ["Seller outside allowlist"], matchedTrackedSearchId: null, matchedTrackedSearchUrl: null };
   }
 
-  if (categories.length > 0 && !trackedSearchMatch && (!category || !categories.includes(category))) {
-    return { matches: false, score: 0, matchedKeywords: [], notes: ["Category outside filter"] };
+  if (effectiveCategories.length > 0 && !trackedSearchMatch && (!category || !effectiveCategories.includes(category))) {
+    return { matches: false, score: 0, matchedKeywords: [], notes: ["Category outside filter"], matchedTrackedSearchId: null, matchedTrackedSearchUrl: null };
   }
 
-  const matchedKeywords = includes.filter((keyword) => haystack.includes(keyword));
+  const globalMatchedKeywords = includes.filter((keyword) => haystack.includes(keyword));
+  const trackedMatchedKeywords = trackedIncludes.filter((keyword) => haystack.includes(keyword));
+  const matchedKeywords = unique([...globalMatchedKeywords, ...trackedMatchedKeywords]);
   const requiresAllKeywords = user.filters.keywordMode === "and";
+  const trackedKeywordMatched =
+    trackedIncludes.length === 0 ? true : requiresAllKeywords ? trackedMatchedKeywords.length === trackedIncludes.length : trackedMatchedKeywords.length > 0;
   const keywordMatched =
     trackedSearchMatch
-      ? true
+      ? trackedKeywordMatched
       : includes.length === 0
         ? trackedSearches.length === 0
         : requiresAllKeywords
-          ? matchedKeywords.length === includes.length
-          : matchedKeywords.length > 0;
+          ? globalMatchedKeywords.length === includes.length
+          : globalMatchedKeywords.length > 0;
 
   if (!keywordMatched) {
-    return { matches: false, score: 0, matchedKeywords: [], notes: ["No keyword match"] };
+    return { matches: false, score: 0, matchedKeywords: [], notes: ["No keyword match"], matchedTrackedSearchId: null, matchedTrackedSearchUrl: null };
   }
 
-  const excluded = excludes.find((keyword) => haystack.includes(keyword));
+  const excluded = [...excludes, ...trackedExcludes].find((keyword) => haystack.includes(keyword));
   if (excluded) {
     return {
       matches: false,
       score: 0,
       matchedKeywords,
-      notes: [`Excluded by keyword: ${excluded}`]
+      notes: [`Excluded by keyword: ${excluded}`],
+      matchedTrackedSearchId: matchedTrackedSearch?.id ?? null,
+      matchedTrackedSearchUrl: matchedTrackedSearch?.searchUrl ?? candidateSearchUrl
     };
   }
 
@@ -81,7 +103,7 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
     notes.push("Tracked search hit");
   }
 
-  if (categories.length > 0) {
+  if (effectiveCategories.length > 0) {
     score += 5;
     notes.push("Category matched");
   }
@@ -91,12 +113,12 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
     notes.push("High-priority SKU");
   }
 
-  if (user.filters.minPriceCents !== null && candidate.priceCents < user.filters.minPriceCents) {
+  if (effectiveMinPrice !== null && candidate.priceCents < effectiveMinPrice) {
     score -= 8;
     notes.push("Below min price");
   }
 
-  if (user.filters.maxPriceCents !== null && candidate.priceCents > user.filters.maxPriceCents) {
+  if (effectiveMaxPrice !== null && candidate.priceCents > effectiveMaxPrice) {
     score -= 18;
     notes.push("Above max price");
   } else {
@@ -119,6 +141,8 @@ export function matchListingToUser(candidate: IngestListing, user: UserRecord): 
     matches: finalScore >= user.filters.minScore,
     score: finalScore,
     matchedKeywords,
-    notes
+    notes,
+    matchedTrackedSearchId: matchedTrackedSearch?.id ?? null,
+    matchedTrackedSearchUrl: matchedTrackedSearch?.searchUrl ?? candidateSearchUrl
   };
 }

@@ -66,12 +66,14 @@ export async function ingestListings(items: IngestListing[]): Promise<IngestSumm
     knownListings.add(listingKey);
     summary.inserted += 1;
 
-    for (const { user } of results) {
+    for (const { user, result } of results) {
       const dashboardAlert: AlertRecord = {
         id: randomUUID(),
         userId: user.id,
         listingId: listing.id,
         channel: "dashboard",
+        trackedSearchId: result.matchedTrackedSearchId,
+        trackedSearchUrl: result.matchedTrackedSearchUrl,
         sentAt: new Date().toISOString(),
         openedAt: null,
         clickedAt: null
@@ -82,6 +84,19 @@ export async function ingestListings(items: IngestListing[]): Promise<IngestSumm
 
       const telegramSent = await sendTelegramAlert(user, listing);
       if (telegramSent) {
+        const telegramAlert: AlertRecord = {
+          id: randomUUID(),
+          userId: user.id,
+          listingId: listing.id,
+          channel: "telegram",
+          trackedSearchId: result.matchedTrackedSearchId,
+          trackedSearchUrl: result.matchedTrackedSearchUrl,
+          sentAt: new Date().toISOString(),
+          openedAt: null,
+          clickedAt: null
+        };
+
+        nextAlerts.unshift(telegramAlert);
         summary.telegramAlerts += 1;
         listing.status = "alerted";
       }

@@ -119,6 +119,7 @@ export async function addTrackedUrlAction(formData: FormData) {
       searchUrl: normalized!,
       categoryTitle: null,
       includeKeywords: [],
+      excludeKeywords: existing?.excludeKeywords ?? [],
       minPriceCents: null,
       maxPriceCents: null,
       createdAt: existing?.createdAt ?? now,

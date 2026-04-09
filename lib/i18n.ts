@@ -192,7 +192,18 @@ export const copy = {
     filterCustomUrlSubmit: "Track URL",
     copyUrl: "Copy URL",
     copiedUrl: "Copied!",
-    openUrl: "Open"
+    openUrl: "Open",
+    feedbackNotInterested: "Not interested",
+    feedbackTitle: "Tune this filter",
+    feedbackBody: "Tell Vintel why this listing is wrong and I will tighten the hunt instead of showing the same kind of result again.",
+    feedbackReasonPrice: "Price too high",
+    feedbackReasonPriceHint: "I will lower the max price for {hunt} and hide this listing.",
+    feedbackReasonWrong: "Wrong product",
+    feedbackReasonWrongHint: "Choose the keywords that should become negative filters for this hunt.",
+    feedbackConfirm: "Update filter",
+    feedbackCancel: "Cancel",
+    feedbackSuccess: "Filter updated.",
+    feedbackFailed: "Could not update this filter right now."
   },
   it: {
     brand: "Vintel",
@@ -360,6 +371,17 @@ export const copy = {
     filterCustomUrlSubmit: "Traccia URL",
     copyUrl: "Copia URL",
     copiedUrl: "Copiato!",
-    openUrl: "Apri"
+    openUrl: "Apri",
+    feedbackNotInterested: "Non mi interessa",
+    feedbackTitle: "Affina questo filtro",
+    feedbackBody: "Dimmi perche' questo listing non va bene e Vintel stringera' la caccia invece di continuare a mostrarti risultati simili.",
+    feedbackReasonPrice: "Prezzo troppo alto",
+    feedbackReasonPriceHint: "Abbasso il cap prezzo per {hunt} e nascondo questo listing.",
+    feedbackReasonWrong: "Prodotto errato",
+    feedbackReasonWrongHint: "Scegli le keyword che devono diventare filtri negativi per questa caccia.",
+    feedbackConfirm: "Aggiorna filtro",
+    feedbackCancel: "Annulla",
+    feedbackSuccess: "Filtro aggiornato.",
+    feedbackFailed: "Non riesco ad aggiornare questo filtro in questo momento."
   }
 } as const;

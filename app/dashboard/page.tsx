@@ -12,16 +12,36 @@ import {
   unlinkTelegramAction
 } from "@/app/actions";
 import { ensureUser, exportUserData, getUserByEmail, readAlerts, readListings } from "@/lib/db";
+import { buildFeedbackKeywordOptions } from "@/lib/feedback";
 import { formatCurrency } from "@/lib/filters";
 import { copy, getLocalePreference, getThemePreference } from "@/lib/i18n";
 import { buildTelegramDeepLink, buildTelegramLinkCommand } from "@/lib/telegram";
 import { CopyButton } from "@/components/copy-button";
+import { ListingFeedbackButton } from "@/components/listing-feedback-button";
+import type { AlertRecord, ListingRecord, TrackedSearchRecord } from "@/lib/types";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function findTrackedSearchForListing(listing: ListingRecord, alerts: AlertRecord[], trackedSearches: TrackedSearchRecord[]) {
+  const alert = alerts.find((entry) => entry.listingId === listing.id && entry.trackedSearchId);
+  if (alert?.trackedSearchId) {
+    return trackedSearches.find((entry) => entry.id === alert.trackedSearchId) ?? null;
+  }
+
+  if (alert?.trackedSearchUrl) {
+    return trackedSearches.find((entry) => entry.searchUrl === alert.trackedSearchUrl) ?? null;
+  }
+
+  if (!listing.sourceSearchUrl) {
+    return null;
+  }
+
+  return trackedSearches.find((entry) => entry.searchUrl === listing.sourceSearchUrl) ?? null;
 }
 
 export default async function DashboardPage() {
@@ -55,12 +75,15 @@ export default async function DashboardPage() {
     exportUserData(user.id)
   ]);
 
-  const listings = allListings.filter((listing) => listing.matchedUserIds.includes(user.id));
-  const alerts = allAlerts.filter((alert) => alert.userId === user.id).slice(0, 12);
+  const userAlerts = allAlerts.filter((alert) => alert.userId === user.id);
+  const listings = allListings
+    .filter((listing) => listing.matchedUserIds.includes(user.id))
+    .filter((listing) => !user.filters.dismissedListingIds.includes(listing.id));
+  const recentAlerts = userAlerts.slice(0, 12);
   const trackedSearches = user.filters.trackedSearches;
   const today = new Date().toISOString().slice(0, 10);
   const snipedToday = listings.filter((listing) => listing.discoveredAt.slice(0, 10) === today).length;
-  const alertsToday = allAlerts.filter((alert) => alert.userId === user.id && alert.sentAt.slice(0, 10) === today).length;
+  const alertsToday = userAlerts.filter((alert) => alert.sentAt.slice(0, 10) === today).length;
   const telegramLinkCommand = buildTelegramLinkCommand(user);
 
   return (
@@ -353,40 +376,65 @@ export default async function DashboardPage() {
           <div className="empty-state">{t.emptyListings}</div>
         ) : (
           <div className="listing-grid">
-            {listings.map((listing) => (
-              <article className="listing-card" key={listing.id}>
-                <div className="listing-head">
-                  <div>
-                    <div className="badge">{listing.source}</div>
-                    <h3>{listing.title}</h3>
+            {listings.map((listing) => {
+              const trackedSearch = findTrackedSearchForListing(listing, userAlerts, trackedSearches);
+
+              return (
+                <article className="listing-card" key={listing.id}>
+                  <div className="listing-head">
+                    <div>
+                      <div className="badge">{listing.source}</div>
+                      <h3>{listing.title}</h3>
+                      {trackedSearch?.label ? (
+                        <div className="tracked-sub">{trackedSearch.label}</div>
+                      ) : null}
+                    </div>
+                    <div className="price-pill">{formatCurrency(listing.priceCents, listing.currency)}</div>
                   </div>
-                  <div className="price-pill">{formatCurrency(listing.priceCents, listing.currency)}</div>
-                </div>
 
-                <div className="meta-grid">
-                  <span>{listing.sellerName}</span>
-                  <span>{formatDate(listing.postedAt)}</span>
-                  <span>score {listing.score}</span>
-                </div>
+                  <div className="meta-grid">
+                    <span>{listing.sellerName}</span>
+                    <span>{formatDate(listing.postedAt)}</span>
+                    <span>score {listing.score}</span>
+                  </div>
 
-                <div className="token-row">
-                  {listing.matchedKeywords.map((keyword) => (
-                    <span className="token" key={keyword}>
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
+                  <div className="token-row">
+                    {listing.matchedKeywords.map((keyword) => (
+                      <span className="token" key={keyword}>
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
 
-                <div className="listing-actions">
-                  <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
-                    {t.buy}
-                  </a>
-                  <a className="ghost-button" href={listing.url} target="_blank" rel="noreferrer">
-                    {t.openListing}
-                  </a>
-                </div>
-              </article>
-            ))}
+                  <div className="listing-actions">
+                    <a className="primary-button" href={listing.url} target="_blank" rel="noreferrer">
+                      {t.buy}
+                    </a>
+                    <a className="ghost-button" href={listing.url} target="_blank" rel="noreferrer">
+                      {t.openListing}
+                    </a>
+                    <ListingFeedbackButton
+                      listingId={listing.id}
+                      trackedSearchLabel={trackedSearch?.label ?? null}
+                      keywordOptions={buildFeedbackKeywordOptions(listing, trackedSearch)}
+                      labels={{
+                        button: t.feedbackNotInterested,
+                        title: t.feedbackTitle,
+                        body: t.feedbackBody,
+                        priceReason: t.feedbackReasonPrice,
+                        priceHint: t.feedbackReasonPriceHint,
+                        wrongReason: t.feedbackReasonWrong,
+                        wrongHint: t.feedbackReasonWrongHint,
+                        confirm: t.feedbackConfirm,
+                        cancel: t.feedbackCancel,
+                        success: t.feedbackSuccess,
+                        failed: t.feedbackFailed
+                      }}
+                    />
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -404,11 +452,11 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {alerts.length === 0 ? (
+        {recentAlerts.length === 0 ? (
           <div className="empty-state">{t.emptyAlerts}</div>
         ) : (
           <div className="activity-list">
-            {alerts.map((alert) => (
+            {recentAlerts.map((alert) => (
               <div className="activity-row" key={alert.id}>
                 <strong>{alert.channel}</strong>
                 <span>{formatDate(alert.sentAt)}</span>

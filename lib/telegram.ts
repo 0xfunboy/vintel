@@ -1,14 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  getListingById,
   getUserByTelegramChatId,
   getUserByTelegramLinkToken,
-  readAlerts,
   readListings,
   updateUserById,
-  writeAlerts
+  readAlerts
 } from "./db";
-import type { AlertRecord, ListingRecord, Locale, UserRecord } from "./types";
+import type { ListingRecord, Locale, UserRecord } from "./types";
+import { applyListingFeedback, formatFeedbackSummary, getListingFeedbackContext } from "./feedback";
 import { normalizeVintedCatalogUrl } from "./vinted";
 
 type TelegramGetMeResponse = {
@@ -24,6 +25,7 @@ type TelegramGetMeResponse = {
 type TelegramWebhookUpdate = {
   message?: TelegramWebhookMessage;
   edited_message?: TelegramWebhookMessage;
+  callback_query?: TelegramWebhookCallbackQuery;
 };
 
 type TelegramWebhookMessage = {
@@ -34,6 +36,16 @@ type TelegramWebhookMessage = {
     first_name?: string;
   };
   text?: string;
+};
+
+type TelegramWebhookCallbackQuery = {
+  id: string;
+  data?: string;
+  message?: {
+    chat: {
+      id: number;
+    };
+  };
 };
 
 const telegramCopy = {
@@ -93,7 +105,14 @@ const telegramCopy = {
     settingsMinPrice: "Min price: <b>{value}</b>",
     settingsMaxPrice: "Max price: <b>{value}</b>",
     settingsScore: "Min score: <b>{value}</b>",
-    settingsNone: "(none)"
+    settingsNone: "(none)",
+    notInterested: "Not interested",
+    feedbackTitle: "Why is this alert wrong?",
+    feedbackPrice: "Price too high",
+    feedbackWrong: "Wrong product",
+    feedbackKeywordTitle: "Which keyword should Vintel block for this hunt?",
+    feedbackKeywordNone: "No useful keywords found on this listing.",
+    feedbackDone: "Filter updated."
   },
   it: {
     welcomeTitle: "Bot sniper Vintel",
@@ -151,7 +170,14 @@ const telegramCopy = {
     settingsMinPrice: "Prezzo minimo: <b>{value}</b>",
     settingsMaxPrice: "Prezzo massimo: <b>{value}</b>",
     settingsScore: "Score minimo: <b>{value}</b>",
-    settingsNone: "(nessuno)"
+    settingsNone: "(nessuno)",
+    notInterested: "Non mi interessa",
+    feedbackTitle: "Perche' questo alert non va bene?",
+    feedbackPrice: "Prezzo troppo alto",
+    feedbackWrong: "Prodotto errato",
+    feedbackKeywordTitle: "Quale keyword deve diventare negativa per questa caccia?",
+    feedbackKeywordNone: "Non ho trovato keyword utili su questo listing.",
+    feedbackDone: "Filtro aggiornato."
   }
 } as const;
 
@@ -475,6 +501,7 @@ async function addBotUrl(chatId: string, user: UserRecord | null, rawUrl: string
       searchUrl: normalized!,
       categoryTitle: null,
       includeKeywords: [],
+      excludeKeywords: existing?.excludeKeywords ?? [],
       minPriceCents: null,
       maxPriceCents: null,
       createdAt: existing?.createdAt ?? now,
@@ -579,6 +606,17 @@ export async function sendTelegramMessage(chatId: string, text: string, extra?: 
   return response.json();
 }
 
+async function answerTelegramCallback(callbackQueryId: string, text?: string) {
+  if (!botToken()) {
+    return;
+  }
+
+  await telegramRequest("answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    text
+  });
+}
+
 export async function buildTelegramDeepLink(user: UserRecord) {
   const profile = await getTelegramBotProfile();
   if (!profile?.username) {
@@ -620,22 +658,16 @@ export async function sendTelegramAlert(user: UserRecord, listing: ListingRecord
             text: t.openDashboard,
             url: `${appUrl()}/dashboard`
           }
+        ],
+        [
+          {
+            text: t.notInterested,
+            callback_data: `fb:start:${listing.id}`
+          }
         ]
       ]
     }
   });
-
-  const alerts = await readAlerts();
-  const alert: AlertRecord = {
-    id: randomUUID(),
-    userId: user.id,
-    listingId: listing.id,
-    channel: "telegram",
-    sentAt: new Date().toISOString(),
-    openedAt: null,
-    clickedAt: null
-  };
-  await writeAlerts([alert, ...alerts]);
 
   return true;
 }
@@ -686,6 +718,208 @@ export async function sendTelegramTrackingConfirmation(
   return true;
 }
 
+function buildFeedbackReasonKeyboard(locale: Locale, listingId: string) {
+  const t = telegramCopy[locale];
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: t.feedbackPrice,
+          callback_data: `fb:price:${listingId}`
+        },
+        {
+          text: t.feedbackWrong,
+          callback_data: `fb:wrong:${listingId}`
+        }
+      ]
+    ]
+  };
+}
+
+function buildFeedbackKeywordKeyboard(listingId: string, keywords: string[]) {
+  return {
+    inline_keyboard: keywords.reduce<Array<Array<{ text: string; callback_data: string }>>>((rows, keyword, index) => {
+      const rowIndex = Math.floor(index / 2);
+      if (!rows[rowIndex]) {
+        rows[rowIndex] = [];
+      }
+
+      rows[rowIndex].push({
+        text: keyword,
+        callback_data: `fb:kw:${listingId}:${index}`
+      });
+
+      return rows;
+    }, [])
+  };
+}
+
+async function handleTelegramFeedbackStart(callback: TelegramWebhookCallbackQuery, user: UserRecord | null, listingId: string) {
+  const chatId = callback.message?.chat.id;
+  if (!chatId) {
+    return { ok: true, action: "ignored" as const };
+  }
+
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+
+  await answerTelegramCallback(callback.id);
+  await sendTelegramMessage(String(chatId), `<b>${t.feedbackTitle}</b>`, {
+    reply_markup: buildFeedbackReasonKeyboard(locale, listingId)
+  });
+
+  return { ok: true, action: "feedback-start" as const };
+}
+
+async function handleTelegramFeedbackPrice(callback: TelegramWebhookCallbackQuery, user: UserRecord | null, listingId: string) {
+  const chatId = callback.message?.chat.id;
+  if (!chatId || !user) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "ignored" as const };
+  }
+
+  const locale = getLocale(user);
+  const listing = await getListingById(listingId);
+  if (!listing) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "missing-listing" as const };
+  }
+
+  const summary = await applyListingFeedback({
+    userId: user.id,
+    listingId,
+    reason: "price_too_high"
+  });
+
+  await answerTelegramCallback(callback.id, telegramCopy[locale].feedbackDone);
+  await sendTelegramMessage(
+    String(chatId),
+    formatFeedbackSummary(locale, listing, summary, "price_too_high", []),
+    {
+      reply_markup: getInlineActions(locale, user),
+      disable_web_page_preview: true
+    }
+  );
+
+  return { ok: true, action: "feedback-price" as const };
+}
+
+async function handleTelegramFeedbackWrong(callback: TelegramWebhookCallbackQuery, user: UserRecord | null, listingId: string) {
+  const chatId = callback.message?.chat.id;
+  if (!chatId || !user) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "ignored" as const };
+  }
+
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+  const context = await getListingFeedbackContext(user.id, listingId);
+  if (!context) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "missing-listing" as const };
+  }
+
+  await answerTelegramCallback(callback.id);
+
+  if (context.keywordOptions.length === 0) {
+    await sendTelegramMessage(String(chatId), t.feedbackKeywordNone, {
+      reply_markup: getInlineActions(locale, user)
+    });
+    return { ok: true, action: "feedback-no-keywords" as const };
+  }
+
+  await sendTelegramMessage(String(chatId), `<b>${t.feedbackKeywordTitle}</b>`, {
+    reply_markup: buildFeedbackKeywordKeyboard(listingId, context.keywordOptions)
+  });
+
+  return { ok: true, action: "feedback-wrong" as const };
+}
+
+async function handleTelegramFeedbackKeyword(
+  callback: TelegramWebhookCallbackQuery,
+  user: UserRecord | null,
+  listingId: string,
+  keywordIndex: string
+) {
+  const chatId = callback.message?.chat.id;
+  if (!chatId || !user) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "ignored" as const };
+  }
+
+  const locale = getLocale(user);
+  const context = await getListingFeedbackContext(user.id, listingId);
+  if (!context) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "missing-listing" as const };
+  }
+
+  const keyword = context.keywordOptions[Number(keywordIndex)];
+  if (!keyword) {
+    await answerTelegramCallback(callback.id);
+    return { ok: true, action: "feedback-invalid-keyword" as const };
+  }
+
+  const summary = await applyListingFeedback({
+    userId: user.id,
+    listingId,
+    reason: "wrong_product",
+    keywords: [keyword]
+  });
+
+  await answerTelegramCallback(callback.id, telegramCopy[locale].feedbackDone);
+  await sendTelegramMessage(
+    String(chatId),
+    formatFeedbackSummary(locale, context.listing, summary, "wrong_product", [keyword]),
+    {
+      reply_markup: getInlineActions(locale, user),
+      disable_web_page_preview: true
+    }
+  );
+
+  return { ok: true, action: "feedback-keyword" as const };
+}
+
+async function handleTelegramCallback(callback: TelegramWebhookCallbackQuery) {
+  const chatId = callback.message?.chat.id;
+  if (!chatId) {
+    return { ok: true, action: "ignored" as const };
+  }
+
+  const user = await getLinkedUser(String(chatId));
+  const locale = getLocale(user);
+  const t = telegramCopy[locale];
+  const data = callback.data?.trim() ?? "";
+
+  if (!user) {
+    await answerTelegramCallback(callback.id);
+    await sendTelegramMessage(String(chatId), t.notLinked, {
+      reply_markup: getReplyKeyboard(locale, user)
+    });
+    return { ok: true, action: "not-linked" as const };
+  }
+
+  if (data.startsWith("fb:start:")) {
+    return handleTelegramFeedbackStart(callback, user, data.replace("fb:start:", ""));
+  }
+
+  if (data.startsWith("fb:price:")) {
+    return handleTelegramFeedbackPrice(callback, user, data.replace("fb:price:", ""));
+  }
+
+  if (data.startsWith("fb:wrong:")) {
+    return handleTelegramFeedbackWrong(callback, user, data.replace("fb:wrong:", ""));
+  }
+
+  if (data.startsWith("fb:kw:")) {
+    const [, , listingId, keywordIndex] = data.split(":");
+    return handleTelegramFeedbackKeyword(callback, user, listingId, keywordIndex ?? "");
+  }
+
+  await answerTelegramCallback(callback.id);
+  return { ok: true, action: "callback-ignored" as const };
+}
+
 function normalizeCommand(text: string) {
   return text.split(/\s+/)[0]?.split("@")[0]?.toLowerCase() ?? "";
 }
@@ -726,6 +960,10 @@ async function linkTelegramChat(chatId: string, token: string) {
 
 export async function handleTelegramWebhook(update: TelegramWebhookUpdate) {
   await ensureTelegramBotMetadata();
+
+  if (update.callback_query) {
+    return handleTelegramCallback(update.callback_query);
+  }
 
   const message = update.message ?? update.edited_message;
   const chatId = message?.chat.id;
