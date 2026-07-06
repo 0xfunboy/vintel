@@ -1,3 +1,11 @@
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=160&section=header&text=vintel&fontSize=60&fontColor=fff&animation=fadeIn&fontAlignY=38&desc=Live%20Vinted%20sniper%20for%20categories%2C%20price%20caps%2C%20and%20keyword%20logic.%20Catch%20the...&descAlignY=60&descSize=14" width="100%"/>
+
+<img src="https://skillicons.dev/icons?i=ts,css,js,nodejs&theme=dark" alt="Tech stack"/>
+
+</div>
+
 # Vintel
 
 Production-oriented Next.js app for a Vinted sniper portal on `https://app.eeess.cyou`.
